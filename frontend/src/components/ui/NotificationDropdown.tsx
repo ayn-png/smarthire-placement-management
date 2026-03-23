@@ -10,8 +10,9 @@ import { motion, AnimatePresence } from "framer-motion";
 import { notificationService } from "@/services/api";
 import { AppNotification } from "@/types";
 import { formatDate } from "@/lib/utils";
+import { useAuth } from "@/contexts/AuthContext";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+const API_URL = (process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000").replace(/\/$/, "");
 const POLL_INTERVAL_MS = 60_000;   // Fallback poll — every 60 s while SSE is live
 const SSE_RETRY_DELAY_MS = 15_000; // Wait before reconnecting a broken SSE stream
 
@@ -24,14 +25,11 @@ export default function NotificationDropdown() {
   const retryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const abortRef = useRef<AbortController | null>(null);
   const mountedRef = useRef(true);
-  // === TESTING MODE — getToken stubbed out (SSE uses X-Test-Role via Axios instead) ===
-  // const { getToken } = useAuth();
-  const getToken = async () => null as string | null;
+  const { getToken } = useAuth();
   const getTokenRef = useRef(getToken);
   useEffect(() => {
     getTokenRef.current = getToken;
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [getToken]);
 
   // ── Fetch notifications (available for both initial load and manual refresh) ──
   const fetchNotifications = useCallback(async (silent = false) => {
