@@ -17,7 +17,7 @@ const securityHeaders = [
       // data: needed for icon/web fonts embedded as data URIs
       "font-src 'self' https://fonts.gstatic.com data:",
       // Cloudinary for uploaded images/avatars/logos; localhost:8000 for local dev
-      "img-src 'self' data: blob: https://res.cloudinary.com http://localhost:8000",
+      "img-src 'self' data: blob: https://res.cloudinary.com http://localhost:8000 https://*.onrender.com",
       // Firebase Auth: identitytoolkit + securetoken (token refresh)
       // Firebase Firestore: firestore.googleapis.com
       // Firebase Auth domain: *.firebaseapp.com (used for OAuth redirect flows)
@@ -28,7 +28,8 @@ const securityHeaders = [
         "https://firestore.googleapis.com " +
         "https://*.firebaseapp.com " +
         "https://*.googleapis.com " +
-        "https://api.smith.langchain.com",
+        "https://api.smith.langchain.com " +
+        "https://*.onrender.com",
       // Firebase Auth uses an iframe for redirect-based OAuth flows
       "frame-src https://*.firebaseapp.com https://accounts.google.com",
       // Service worker needs blob: and 'self'
@@ -49,6 +50,7 @@ const nextConfig = {
     remotePatterns: [
       { protocol: "http", hostname: "localhost" },
       { protocol: "https", hostname: "res.cloudinary.com" },
+      { protocol: "https", hostname: "*.onrender.com" },
     ],
   },
   async headers() {
