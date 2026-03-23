@@ -1,0 +1,38 @@
+{
+  "name": "SmartHire - College Placement Management",
+  "short_name": "SmartHire",
+  "description": "Enterprise-grade college placement management with AI interview preparation",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#18181b",
+  "theme_color": "#6366f1",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "/favicon-192x192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/favicon-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "categories": ["education", "productivity", "business"],
+  "screenshots": [],
+  "shortcuts": [
+    {
+      "name": "My Applications",
+      "url": "/student/applications",
+      "description": "View your job applications"
+    },
+    {
+      "name": "Browse Jobs",
+      "url": "/student/jobs",
+      "description": "Browse available job openings"
+    }
+  ]
+}

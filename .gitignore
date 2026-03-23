@@ -1,0 +1,62 @@
+# ============================================================
+# FIX 8 — .gitignore for Placement Management (SmartHire)
+# IMPORTANT: The .env file that was previously committed
+# contains live API keys (Gemini + OpenRouter). Those keys
+# MUST be rotated/regenerated immediately.
+# ============================================================
+
+# ── Environment & secrets ───────────────────────────────────
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+secrets/
+firebase-service-account.json
+
+# ── Python / FastAPI backend ─────────────────────────────────
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+venv/
+env/
+.venv/
+*.egg-info/
+dist/
+build/
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+htmlcov/
+.coverage
+*.log
+
+# ── Uploaded files (runtime, not source) ────────────────────
+backend/uploads/
+
+# ── Node / Next.js frontend ──────────────────────────────────
+node_modules/
+.next/
+out/
+.vercel/
+*.tsbuildinfo
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# ── OS artefacts ─────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ── IDE / editor ─────────────────────────────────────────────
+.vscode/settings.json
+.idea/
+*.swp
+*.swo
+
+# Claude session data
+.claude/
+nul

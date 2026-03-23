@@ -1,0 +1,11 @@
+User-agent: *
+Disallow: /admin/
+Disallow: /student/
+Disallow: /management/
+Disallow: /company/
+Disallow: /api/
+
+Allow: /
+Allow: /login
+Allow: /signup
+Allow: /company-register

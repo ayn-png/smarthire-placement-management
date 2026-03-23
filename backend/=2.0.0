@@ -1,0 +1,27 @@
+Collecting sentry-sdk
+  Using cached sentry_sdk-2.54.0-py2.py3-none-any.whl.metadata (10 kB)
+Requirement already satisfied: Pillow>=10.0.0 in C:\Users\john\AppData\Local\Programs\Python\Python312\Lib\site-packages (10.1.0)
+Requirement already satisfied: pytesseract>=0.3.10 in C:\Users\john\AppData\Local\Programs\Python\Python312\Lib\site-packages (0.3.13)
+Collecting cloudinary==1.41.0
+  Using cached cloudinary-1.41.0-py3-none-any.whl
+Collecting cryptography>=42.0.0
+  Using cached cryptography-46.0.5-cp311-abi3-win_amd64.whl.metadata (5.7 kB)
+Requirement already satisfied: six in C:\Users\john\AppData\Local\Programs\Python\Python312\Lib\site-packages (from cloudinary==1.41.0) (1.17.0)
+Requirement already satisfied: urllib3>=1.26.5 in C:\Users\john\AppData\Local\Programs\Python\Python312\Lib\site-packages (from cloudinary==1.41.0) (2.6.3)
+Requirement already satisfied: certifi in C:\Users\john\AppData\Local\Programs\Python\Python312\Lib\site-packages (from cloudinary==1.41.0) (2026.1.4)
+Requirement already satisfied: packaging>=21.3 in C:\Users\john\AppData\Local\Programs\Python\Python312\Lib\site-packages (from pytesseract>=0.3.10) (23.2)
+Requirement already satisfied: cffi>=2.0.0 in C:\Users\john\AppData\Local\Programs\Python\Python312\Lib\site-packages (from cryptography>=42.0.0) (2.0.0)
+Requirement already satisfied: pycparser in C:\Users\john\AppData\Local\Programs\Python\Python312\Lib\site-packages (from cffi>=2.0.0->cryptography>=42.0.0) (3.0)
+Downloading sentry_sdk-2.54.0-py2.py3-none-any.whl (439 kB)
+Using cached cryptography-46.0.5-cp311-abi3-win_amd64.whl (3.5 MB)
+Installing collected packages: sentry-sdk, cloudinary, cryptography
+  Attempting uninstall: cloudinary
+    Found existing installation: cloudinary 1.44.1
+    Uninstalling cloudinary-1.44.1:
+      Successfully uninstalled cloudinary-1.44.1
+  Attempting uninstall: cryptography
+    Found existing installation: cryptography 41.0.7
+    Uninstalling cryptography-41.0.7:
+      Successfully uninstalled cryptography-41.0.7
+
+Successfully installed cloudinary-1.41.0 cryptography-46.0.5 sentry-sdk-2.54.0

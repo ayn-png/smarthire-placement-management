@@ -1,0 +1,37 @@
+from enum import Enum
+
+
+class UserRole(str, Enum):
+    STUDENT = "STUDENT"
+    PLACEMENT_ADMIN = "PLACEMENT_ADMIN"
+    COLLEGE_MANAGEMENT = "COLLEGE_MANAGEMENT"
+
+
+class ApplicationStatus(str, Enum):
+    PENDING = "PENDING"
+    UNDER_REVIEW = "UNDER_REVIEW"
+    SHORTLISTED = "SHORTLISTED"
+    INTERVIEW_SCHEDULED = "INTERVIEW_SCHEDULED"
+    SELECTED = "SELECTED"
+    REJECTED = "REJECTED"
+    WITHDRAWN = "WITHDRAWN"
+
+
+class JobType(str, Enum):
+    FULL_TIME = "FULL_TIME"
+    PART_TIME = "PART_TIME"
+    INTERNSHIP = "INTERNSHIP"
+    CONTRACT = "CONTRACT"
+
+
+class JobStatus(str, Enum):
+    OPEN = "OPEN"
+    CLOSED = "CLOSED"
+    PAUSED = "PAUSED"
+
+
+class InterviewType(str, Enum):
+    TECHNICAL = "TECHNICAL"
+    HR = "HR"
+    MANAGERIAL = "MANAGERIAL"
+    CASE_STUDY = "CASE_STUDY"

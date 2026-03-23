@@ -1,0 +1,175 @@
+from fastapi import APIRouter, Depends, UploadFile, File, Query
+from fastapi.responses import StreamingResponse
+from typing import Optional, List
+import csv
+import io
+from app.schemas.student import StudentProfileCreate, StudentProfileUpdate, StudentProfileResponse, ResumeUploadResponse, AvatarUploadResponse, MarksheetUploadResponse
+from app.services.student_service import StudentService
+from app.middleware.auth import get_current_user, require_student, require_admin
+from app.utils.file_upload import save_resume, save_avatar, save_marksheet
+from app.db.database import get_database
+
+router = APIRouter(prefix="/students", tags=["Students"])
+
+
+def get_student_service(db=Depends(get_database)) -> StudentService:
+    return StudentService(db)
+
+
+@router.post("/profile", response_model=StudentProfileResponse, status_code=201)
+async def create_profile(
+    data: StudentProfileCreate,
+    current_user: dict = Depends(require_student),
+    service: StudentService = Depends(get_student_service),
+):
+    return await service.create_profile(current_user, data)
+
+
+@router.get("/profile/me", response_model=StudentProfileResponse)
+async def get_my_profile(
+    current_user: dict = Depends(require_student),
+    service: StudentService = Depends(get_student_service),
+):
+    return await service.get_profile(current_user)
+
+
+@router.put("/profile/me", response_model=StudentProfileResponse)
+async def update_my_profile(
+    data: StudentProfileUpdate,
+    current_user: dict = Depends(require_student),
+    service: StudentService = Depends(get_student_service),
+):
+    return await service.update_profile(current_user, data)
+
+
+@router.post("/resume", response_model=ResumeUploadResponse)
+async def upload_resume(
+    file: UploadFile = File(...),
+    current_user: dict = Depends(require_student),
+    service: StudentService = Depends(get_student_service),
+):
+    resume_url = await save_resume(file, current_user["id"])
+    await service.update_resume_url(current_user, resume_url)
+    return ResumeUploadResponse(
+        resume_url=resume_url,
+        filename=file.filename,
+        message="Resume uploaded successfully",
+    )
+
+
+# Feature 8 — Profile Photo Upload
+@router.post("/avatar", response_model=AvatarUploadResponse)
+async def upload_avatar(
+    file: UploadFile = File(...),
+    current_user: dict = Depends(require_student),
+    service: StudentService = Depends(get_student_service),
+):
+    avatar_url = await save_avatar(file, current_user["id"])
+    await service.update_avatar_url(current_user, avatar_url)
+    return AvatarUploadResponse(
+        avatar_url=avatar_url,
+        message="Avatar uploaded successfully",
+    )
+
+
+@router.post("/marksheet", response_model=MarksheetUploadResponse)
+async def upload_marksheet(
+    file: UploadFile = File(...),
+    current_user: dict = Depends(require_student),
+    service: StudentService = Depends(get_student_service),
+):
+    """Upload a marksheet PDF or image; auto-extracts student data via OpenAI."""
+    from app.services.marksheet_service import extract_marksheet_data
+
+    marksheet_url = await save_marksheet(file, current_user["id"])
+
+    # Try to update profile (may fail if profile not created yet — that's OK)
+    try:
+        await service.update_marksheet_url(current_user, marksheet_url)
+    except Exception:
+        pass  # Profile may not exist yet; URL will be used in create_profile payload
+
+    extracted_data = await extract_marksheet_data(marksheet_url)
+
+    return MarksheetUploadResponse(
+        marksheet_url=marksheet_url,
+        extracted_data=extracted_data,
+        message="Marksheet uploaded successfully",
+    )
+
+
+@router.get("/profile/{profile_id}", response_model=StudentProfileResponse)
+async def get_student_profile(
+    profile_id: str,
+    current_user: dict = Depends(get_current_user),
+    service: StudentService = Depends(get_student_service),
+):
+    return await service.get_profile_by_id(profile_id)
+
+
+@router.get("/", response_model=dict)
+async def list_students(
+    branch: Optional[str] = Query(None),
+    min_cgpa: Optional[float] = Query(None),
+    max_cgpa: Optional[float] = Query(None),
+    skills: Optional[List[str]] = Query(None),
+    page: int = Query(1, ge=1),
+    limit: int = Query(20, ge=1, le=100),
+    current_user: dict = Depends(get_current_user),
+    service: StudentService = Depends(get_student_service),
+):
+    from app.core.enums import UserRole
+    if current_user.get("role") == UserRole.STUDENT.value:
+        from app.core.exceptions import ForbiddenException
+        raise ForbiddenException("Students cannot view all student profiles")
+    return await service.list_students(branch, min_cgpa, max_cgpa, skills, page, limit)
+
+
+@router.get("/export-csv")
+async def export_students_csv(
+    branch: Optional[str] = Query(None),
+    min_cgpa: Optional[float] = Query(None),
+    max_cgpa: Optional[float] = Query(None),
+    current_user: dict = Depends(require_admin),
+    service: StudentService = Depends(get_student_service),
+):
+    """Export students list as CSV file."""
+    # Get all students without pagination for full export
+    result = await service.list_students(branch, min_cgpa, max_cgpa, None, page=1, limit=10000)
+    students = result["profiles"]
+
+    async def csv_generator():
+        buf = io.StringIO()
+        writer = csv.writer(buf)
+        writer.writerow([
+            "ID", "Name", "Email", "Roll Number", "Branch", "Semester",
+            "CGPA", "Phone", "LinkedIn", "GitHub", "Skills", "Resume Available"
+        ])
+        yield buf.getvalue()
+        buf.truncate(0)
+        buf.seek(0)
+
+        for student in students:
+            writer.writerow([
+                student.id,
+                student.full_name,
+                student.email,
+                student.roll_number,
+                student.branch,
+                student.semester or "N/A",
+                student.cgpa,
+                student.phone or "N/A",
+                student.linkedin_url or "N/A",
+                student.github_url or "N/A",
+                ", ".join(student.skills) if student.skills else "N/A",
+                "Yes" if student.resume_url else "No",
+            ])
+            yield buf.getvalue()
+            buf.truncate(0)
+            buf.seek(0)
+
+    return StreamingResponse(
+        csv_generator(),
+        media_type="text/csv",
+        headers={"Content-Disposition": "attachment; filename=students_export.csv"},
+    )
