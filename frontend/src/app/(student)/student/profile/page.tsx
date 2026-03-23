@@ -294,9 +294,16 @@ const BRANCH_NORM: Record<string, BranchValue> = {
   "civil engineering": "CE",
   "civil": "CE",
   "ce": "CE",
+  "artificial intelligence": "AI",
+  "artificial intelligence and machine learning": "AI",
+  "ai & ml": "AI",
+  "ai and ml": "AI",
+  "b.tech ai": "AI",
+  "b.e. ai": "AI",
+  "ai": "AI",
 };
 
-const VALID_BRANCH_CODES: BranchValue[] = ["CSE", "ECE", "ME", "CE", "EE", "IT", "Other"];
+const VALID_BRANCH_CODES: BranchValue[] = ["CSE", "ECE", "ME", "CE", "EE", "IT", "AI", "Other"];
 
 function normalizeBranch(raw: string | null | undefined): BranchValue | null {
   if (!raw) return null;
