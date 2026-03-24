@@ -34,6 +34,19 @@ const schema = z.object({
 
 type FormData = z.infer<typeof schema>;
 
+// ── Helper: safely extract a readable string from FastAPI / Pydantic v2 errors
+// Pydantic v2 returns `detail` as an array [{type, loc, msg, input}] on 422.
+// Plain string errors are returned as-is.
+function extractErrorMsg(err: unknown, fallback = "Operation failed"): string {
+  const detail = (err as { response?: { data?: { detail?: unknown } } })?.response?.data?.detail;
+  if (!detail) return fallback;
+  if (typeof detail === "string") return detail;
+  if (Array.isArray(detail) && detail.length > 0) {
+    return (detail[0] as { msg?: string })?.msg ?? fallback;
+  }
+  return fallback;
+}
+
 // ── Avatar Upload Widget ────────────────────────────────────────────────────
 function AvatarUpload({
   avatarUrl,
@@ -62,7 +75,7 @@ function AvatarUpload({
       const { avatar_url } = await studentService.uploadAvatar(file);
       onUploaded(avatar_url);
     } catch (err: unknown) {
-      const msg = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail || "Upload failed";
+      const msg = extractErrorMsg(err, "Upload failed");
       setError(msg);
       setPreview(getFileUrl(avatarUrl) || null);
     } finally {
@@ -159,7 +172,7 @@ function MarksheetUpload({
       setUploaded(true);
       onUploaded(result.marksheet_url, result.extracted_data);
     } catch (err: unknown) {
-      const msg = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail || "Upload failed";
+      const msg = extractErrorMsg(err, "Upload failed");
       setError(msg);
     } finally {
       setUploading(false);
@@ -435,7 +448,7 @@ export default function ProfilePage() {
       setSaveSuccess(true);
       setTimeout(() => setSaveSuccess(false), 3000);
     } catch (err: unknown) {
-      alert((err as { response?: { data?: { detail?: string } } })?.response?.data?.detail || "Failed to save profile");
+      alert(extractErrorMsg(err, "Failed to save profile"));
     }
   }
 
@@ -449,8 +462,7 @@ export default function ProfilePage() {
       setOtpCountdownActive(true);
       setOtpCode("");
     } catch (err: unknown) {
-      const apiErr = err as { response?: { data?: { detail?: string } } };
-      setPwError(apiErr?.response?.data?.detail || "Failed to send verification code");
+      setPwError(extractErrorMsg(err, "Failed to send verification code"));
     } finally {
       setOtpSending(false);
     }
@@ -487,7 +499,7 @@ export default function ProfilePage() {
       setConfirmPassword("");
       setTimeout(() => setPwSuccess(false), 4000);
     } catch (err: unknown) {
-      setPwError((err as { response?: { data?: { detail?: string } } })?.response?.data?.detail || "Failed to change password");
+      setPwError(extractErrorMsg(err, "Failed to change password"));
     } finally {
       setPwSaving(false);
     }
