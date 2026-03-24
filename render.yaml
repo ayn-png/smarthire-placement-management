@@ -1,0 +1,42 @@
+services:
+  # ── Frontend (Next.js) ───────────────────────────────────────────────────────
+  - type: web
+    name: smarthire-frontend
+    env: node
+    rootDir: frontend
+    buildCommand: npm install && npm run build
+    startCommand: npm start
+    nodeVersion: 20.x
+    envVars:
+      - key: NODE_ENV
+        value: production
+      # Add these in the Render dashboard (secret values):
+      # NEXT_PUBLIC_API_URL         = https://<your-backend>.onrender.com
+      # NEXT_PUBLIC_FIREBASE_API_KEY
+      # NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN
+      # NEXT_PUBLIC_FIREBASE_PROJECT_ID
+      # NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET
+      # NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID
+      # NEXT_PUBLIC_FIREBASE_APP_ID
+      # FIREBASE_SERVICE_ACCOUNT_JSON
+      # INTERNAL_API_SECRET
+
+  # ── Backend (FastAPI via Docker) ─────────────────────────────────────────────
+  - type: web
+    name: smarthire-backend
+    env: docker
+    rootDir: backend
+    dockerfilePath: ./Dockerfile
+    envVars:
+      - key: PORT
+        value: 8000
+      # Add these in the Render dashboard (secret values):
+      # FIREBASE_PROJECT_ID
+      # FIREBASE_SERVICE_ACCOUNT_JSON
+      # CLOUDINARY_CLOUD_NAME
+      # CLOUDINARY_API_KEY
+      # CLOUDINARY_API_SECRET
+      # OPENAI_API_KEY
+      # MISTRAL_API_KEY
+      # ALLOWED_ORIGINS          = https://<your-frontend>.onrender.com
+      # INTERNAL_API_SECRET
