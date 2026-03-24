@@ -35,6 +35,8 @@ class Settings(BaseSettings):
 
     # AI Resume Analyzer - OpenAI (used by /ai/analyze-existing-resume)
     OPENAI_API_KEY: str = ""
+    # OpenRouter - fallback when OpenAI quota is exceeded (OpenAI-compatible API)
+    OPENROUTER_API_KEY: str = ""
 
     # Mistral AI - used by mock interview chat (/interview/mock-chat)
     MISTRAL_API_KEY: str = ""

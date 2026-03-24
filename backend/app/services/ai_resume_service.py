@@ -15,7 +15,9 @@ from app.core.config import settings
 logger = logging.getLogger(__name__)
 
 # ── Configuration ────────────────────────────────────────────────────────────
-OPENAI_MODEL = "gpt-4o-mini"  # Cost-effective, fast, high-quality
+OPENAI_MODEL = "gpt-4o-mini"           # Cost-effective, fast, high-quality
+OPENROUTER_MODEL = "openai/gpt-4o-mini"  # Same model routed via OpenRouter (fallback)
+OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
 
 
 # ── Prompt builder ───────────────────────────────────────────────────────────
@@ -173,6 +175,61 @@ async def _call_openai_langchain(prompt: str, api_key: str) -> dict:
     return _sanitize_result(parsed)
 
 
+# ── Quota error detection ────────────────────────────────────────────────────
+
+def _is_quota_error(exc: Exception) -> bool:
+    """Return True if the exception is an OpenAI quota / rate-limit error."""
+    try:
+        import openai as _openai
+        if isinstance(exc, (_openai.RateLimitError, _openai.AuthenticationError)):
+            return True
+    except ImportError:
+        pass
+    exc_str = str(exc)
+    return (
+        "insufficient_quota" in exc_str
+        or "quota" in exc_str.lower()
+        or "rate limit" in exc_str.lower()
+        or "429" in exc_str
+    )
+
+
+# ── OpenRouter fallback ───────────────────────────────────────────────────────
+
+async def _call_openrouter_langchain(prompt: str, api_key: str) -> dict:
+    """
+    Call OpenRouter as a fallback when OpenAI quota is exceeded.
+    OpenRouter exposes an OpenAI-compatible REST API, so ChatOpenAI works with
+    a simple base_url override — no extra packages required.
+    """
+    try:
+        from langchain_openai import ChatOpenAI
+        from langchain_core.messages import HumanMessage
+    except ImportError as e:
+        raise ImportError(
+            f"langchain-openai is required for OpenRouter fallback. ({e})"
+        )
+
+    llm = ChatOpenAI(
+        model=OPENROUTER_MODEL,
+        openai_api_key=api_key,
+        base_url=OPENROUTER_BASE_URL,   # langchain-openai >= 0.2.0 uses base_url
+        temperature=0.0,
+        max_tokens=1500,
+        timeout=60,
+    )
+
+    response = await llm.ainvoke([HumanMessage(content=prompt)])
+    text = response.content
+
+    if not text or not text.strip():
+        raise RuntimeError("OpenRouter returned an empty response")
+
+    parsed = _extract_json(text)
+    logger.info("AI analysis succeeded via OpenRouter (fallback)")
+    return _sanitize_result(parsed)
+
+
 # ── Job Role Matching ────────────────────────────────────────────────────────
 
 # Define job role skill mappings
@@ -305,16 +362,15 @@ async def analyze_resume_text(
 
     prompt = _build_prompt(resume_text, job_description)
 
+    # ── Try OpenAI first ─────────────────────────────────────────────────────
+    openai_quota_exceeded = False
     try:
         result = await _call_openai_langchain(prompt, openai_key)
 
         # Generate job suggestions based on extracted skills
         extracted_skills = result.get("extractedSkills", [])
         job_suggestions = _generate_job_suggestions(extracted_skills)
-
-        # Add job suggestions to the result
         result["jobSuggestions"] = job_suggestions
-
         logger.info(f"Generated {len(job_suggestions)} job role suggestions")
         return result
 
@@ -323,4 +379,32 @@ async def analyze_resume_text(
         raise RuntimeError(f"Missing required package: {e}")
     except Exception as exc:
         logger.error(f"OpenAI analysis failed: {exc}", exc_info=True)
-        raise RuntimeError(f"AI analysis failed: {exc}")
+        if _is_quota_error(exc):
+            openai_quota_exceeded = True
+            logger.warning("OpenAI quota exceeded — attempting OpenRouter fallback")
+        else:
+            raise RuntimeError("AI analysis failed. Please try again later.")
+
+    # ── OpenAI quota exceeded → fall back to OpenRouter ──────────────────────
+    openrouter_key = settings.OPENROUTER_API_KEY
+    if not openrouter_key:
+        raise RuntimeError(
+            "AI analysis is temporarily unavailable — the OpenAI API quota has been exceeded "
+            "and no fallback provider is configured. Please contact the administrator."
+        )
+
+    try:
+        result = await _call_openrouter_langchain(prompt, openrouter_key)
+
+        extracted_skills = result.get("extractedSkills", [])
+        job_suggestions = _generate_job_suggestions(extracted_skills)
+        result["jobSuggestions"] = job_suggestions
+        logger.info(f"Generated {len(job_suggestions)} job role suggestions (via OpenRouter fallback)")
+        return result
+
+    except Exception as exc:
+        logger.error(f"OpenRouter fallback failed: {exc}", exc_info=True)
+        raise RuntimeError(
+            "AI analysis is temporarily unavailable — both the primary and fallback AI "
+            "providers are unavailable. Please try again later or contact the administrator."
+        )
