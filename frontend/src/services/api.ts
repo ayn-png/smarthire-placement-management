@@ -57,18 +57,17 @@ export const studentService = {
   uploadResume: (file: File) => {
     const form = new FormData();
     form.append("file", file);
-    return api.post<{ resume_url: string; filename: string; message: string }>("/students/resume", form, {
-      headers: { "Content-Type": "multipart/form-data" },
-    }).then((r) => r.data);
+    // Do NOT set Content-Type manually — the browser/XMLHttpRequest automatically
+    // sets "multipart/form-data; boundary=<...>" when FormData is the body.
+    // A manual override loses the boundary and breaks server-side parsing.
+    return api.post<{ resume_url: string; filename: string; message: string }>("/students/resume", form).then((r) => r.data);
   },
 
   // Feature 8 — Avatar upload
   uploadAvatar: (file: File) => {
     const form = new FormData();
     form.append("file", file);
-    return api.post<{ avatar_url: string; message: string }>("/students/avatar", form, {
-      headers: { "Content-Type": "multipart/form-data" },
-    }).then((r) => r.data);
+    return api.post<{ avatar_url: string; message: string }>("/students/avatar", form).then((r) => r.data);
   },
 
   // Marksheet upload — returns Cloudinary URL + AI-extracted data
@@ -86,9 +85,7 @@ export const studentService = {
         cgpa: number | null;
       };
       message: string;
-    }>("/students/marksheet", form, {
-      headers: { "Content-Type": "multipart/form-data" },
-    }).then((r) => r.data);
+    }>("/students/marksheet", form).then((r) => r.data);
   },
 
   getStudentById: (id: string) =>
