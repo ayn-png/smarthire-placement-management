@@ -37,6 +37,8 @@ class MockInterviewRequest(BaseModel):
     messages: List[MockInterviewMessage]
     job_title: Optional[str] = None
     skills: List[str] = []
+    interview_type: Optional[str] = None  # e.g. TECHNICAL, HR, MANAGERIAL, CASE_STUDY
+    difficulty: Optional[str] = None      # easy, medium, hard
 
 
 class MockInterviewResponse(BaseModel):

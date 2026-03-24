@@ -51,16 +51,36 @@ async def analyze_resume(
                 detail="No resume uploaded. Please upload your resume first."
             )
 
-        relative_path = profile.resume_url.lstrip("/")
-        file_path = os.path.join(BASE_DIR, relative_path)
+        resume_url = profile.resume_url
+        cleanup_temp = False
+        file_path = None
 
-        if not os.path.isfile(file_path):
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Resume file not found on server. Please re-upload your resume."
-            )
+        if resume_url.startswith("http"):
+            # Resume stored on Cloudinary — download to a temp file for analysis
+            import tempfile
+            import httpx
+            async with httpx.AsyncClient(timeout=30) as client:
+                r = await client.get(resume_url)
+            if r.status_code != 200:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="Could not fetch resume from cloud storage. Please re-upload.",
+                )
+            tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".pdf")
+            tmp.write(r.content)
+            tmp.close()
+            file_path = tmp.name
+            cleanup_temp = True
+        else:
+            # Legacy: resume stored as local relative path
+            file_path = os.path.join(BASE_DIR, resume_url.lstrip("/"))
+            if not os.path.isfile(file_path):
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="Resume file not found on server. Please re-upload your resume.",
+                )
 
-        logger.info(f"Analyzing resume for user {current_user['_id']}: {os.path.basename(file_path)}")
+        logger.info(f"Analyzing resume for user {current_user['id']}: {os.path.basename(file_path)}")
 
         try:
             svc = get_analyzer_service()
@@ -96,6 +116,14 @@ async def analyze_resume(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to analyze resume. Please try again later."
         )
+
+    finally:
+        # Clean up temp file if we downloaded from Cloudinary
+        if cleanup_temp and file_path and os.path.exists(file_path):
+            try:
+                os.unlink(file_path)
+            except Exception:
+                pass
 
 
 @router.get("/health")

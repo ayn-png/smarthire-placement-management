@@ -10,6 +10,7 @@ from app.schemas.auth import UserResponse, ChangePasswordRequest, ForgotPassword
 from app.services.auth_service import AuthService
 from app.middleware.auth import get_current_user
 from app.core.firebase_jwt import decode_firebase_token
+from app.core.exceptions import CredentialsException
 from app.db.database import get_database
 from app.core.config import settings
 from app.core.enums import UserRole
@@ -220,6 +221,55 @@ async def firebase_sync(
         )
 
     return {"message": "User synced successfully", "uid": data.firebase_uid}
+
+
+# ── Self-Sync ─────────────────────────────────────────────────────────────────
+
+@router.post("/self-sync", status_code=200)
+async def self_sync_user(
+    credentials: HTTPAuthorizationCredentials = Depends(_bearer),
+    db=Depends(get_database),
+):
+    """
+    Self-healing endpoint called by the frontend when any authenticated request
+    returns 401, meaning the Firestore users/{uid} document is missing.
+
+    This happens when /api/set-role called /auth/firebase-sync but the request
+    failed silently (e.g. INTERNAL_API_SECRET mismatch → 403, or backend was
+    temporarily down). The user has a valid Firebase account + custom role claim
+    but no matching Firestore document, so every protected endpoint returns 401.
+
+    This endpoint verifies the Firebase ID token directly (bypassing the normal
+    require_student middleware that needs the doc to already exist), reads the
+    role from the token's custom claims, and upserts the users/{uid} document.
+    """
+    payload = decode_firebase_token(credentials.credentials)
+    if not payload:
+        raise CredentialsException()
+
+    uid = payload.get("uid")
+    role_claim = payload.get("role")
+    if not uid or not role_claim:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Token is missing the role custom claim. Please complete role selection at /signup/role-select.",
+        )
+
+    user_ref = db.collection("users").document(uid)
+    user_doc = await asyncio.to_thread(user_ref.get)
+
+    if not user_doc.exists:
+        now = utcnow()
+        await asyncio.to_thread(user_ref.set, {
+            "email": payload.get("email", ""),
+            "full_name": payload.get("name", payload.get("email", "")),
+            "role": role_claim,
+            "is_active": True,
+            "created_at": now,
+            "updated_at": now,
+        })
+
+    return {"message": "synced", "uid": uid, "role": role_claim}
 
 
 # ── Admin User Management ─────────────────────────────────────────────────────

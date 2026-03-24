@@ -165,7 +165,7 @@ class InterviewService:
 
         # Try Mistral AI first; fall back to enhanced rule-based on any failure
         try:
-            ai_reply = await self._call_mistral(messages, data.job_title)
+            ai_reply = await self._call_mistral(messages, data.job_title, data.interview_type, data.difficulty)
             if ai_reply:
                 logger.info("Mock interview response generated via Mistral AI")
                 return MockInterviewResponse(reply=ai_reply)
@@ -180,7 +180,7 @@ class InterviewService:
         logger.info("Mock interview response generated via enhanced rule-based system")
         return MockInterviewResponse(reply=reply, feedback=feedback)
 
-    async def _call_mistral(self, messages, job_title: str | None) -> str | None:
+    async def _call_mistral(self, messages, job_title: str | None, interview_type: str | None = None, difficulty: str | None = None) -> str | None:
         """Call Mistral via LangChain for a realistic AI interviewer response."""
         from app.core.config import settings
         if not settings.MISTRAL_API_KEY:
@@ -189,11 +189,14 @@ class InterviewService:
         from langchain_mistralai import ChatMistralAI
         from langchain_core.messages import SystemMessage, HumanMessage, AIMessage
 
-        title_str = job_title or "a software role"
+        title_str = job_title or "a software engineering role"
+        type_str = (interview_type or "TECHNICAL").replace("_", " ").title()
+        level_str = (difficulty or "medium").lower()
         system_prompt = (
-            f"You are a professional interviewer conducting a mock job interview for a {title_str} position. "
+            f"You are a professional interviewer conducting a {level_str}-difficulty {type_str} mock interview "
+            f"for a {title_str} position. "
             "Your role: briefly acknowledge the candidate's last answer (1 sentence), then ask ONE relevant follow-up "
-            "or next interview question. Keep your entire response under 80 words. "
+            "or next interview question appropriate for this interview type. Keep your entire response under 80 words. "
             "Do NOT give a score or grade. Sound natural and professional."
         )
 

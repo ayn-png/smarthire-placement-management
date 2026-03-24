@@ -45,7 +45,7 @@ def get_user_id_for_rate_limit(request: Request) -> str:
     # The require_student dependency populates request.state.user
     user = getattr(request.state, "user", None)
     if user and isinstance(user, dict):
-        user_id = user.get("_id") or user.get("sub")
+        user_id = user.get("id") or user.get("sub")
         if user_id:
             return f"user:{user_id}"
     # Fallback to IP if user not found (shouldn't happen with require_student)

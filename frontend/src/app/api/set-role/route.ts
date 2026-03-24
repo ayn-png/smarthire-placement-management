@@ -81,9 +81,12 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Failed to set role" }, { status: 500 });
   }
 
-  // 2. Sync user record to Firestore via backend (non-fatal)
+  // 2. Sync user record to Firestore via backend — FATAL if it fails.
+  // Without this the Firestore users/{uid} doc is never created, and every
+  // subsequent authenticated API call returns 401 "Could not validate credentials".
+  let syncRes: Response;
   try {
-    await fetch(`${BACKEND_URL}/api/v1/auth/firebase-sync`, {
+    syncRes = await fetch(`${BACKEND_URL}/api/v1/auth/firebase-sync`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -97,8 +100,21 @@ export async function POST(request: NextRequest) {
         role,
       }),
     });
-  } catch {
-    console.error("[set-role] Failed to sync user to backend — non-fatal");
+  } catch (networkErr) {
+    console.error("[set-role] Network error syncing user to backend:", networkErr);
+    return NextResponse.json(
+      { error: "Failed to create your account record. Please try again." },
+      { status: 500 }
+    );
+  }
+
+  if (!syncRes.ok) {
+    const body = await syncRes.text().catch(() => "");
+    console.error(`[set-role] firebase-sync returned ${syncRes.status}: ${body}`);
+    return NextResponse.json(
+      { error: "Failed to create your account record. Please try again." },
+      { status: 500 }
+    );
   }
 
   return NextResponse.json({ success: true, role });
