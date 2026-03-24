@@ -117,7 +117,11 @@ async def upload_avatar(file: UploadFile, user_id: str) -> str:
         )
 
     try:
-        # Upload to Cloudinary with transformations (run sync SDK in thread)
+        # Upload to Cloudinary (run sync SDK in thread to avoid blocking event loop).
+        # No eager transformations — they produce derivative URLs that differ from
+        # secure_url and fetch_format:"auto" causes the CDN to return 503 while it
+        # transcodes.  Width/height/crop applied as direct upload params so the
+        # stored image is already resized and secure_url is a plain, stable URL.
         result = await asyncio.to_thread(
             cloudinary.uploader.upload,
             content,
@@ -125,11 +129,10 @@ async def upload_avatar(file: UploadFile, user_id: str) -> str:
             public_id=f"avatar_{user_id}",
             overwrite=True,
             invalidate=True,
-            transformation=[
-                {"width": 400, "height": 400, "crop": "fill", "gravity": "face"},
-                {"quality": "auto"},
-                {"fetch_format": "auto"},
-            ],
+            width=400,
+            height=400,
+            crop="fill",
+            gravity="face",
         )
         return result["secure_url"]
     except Exception as e:

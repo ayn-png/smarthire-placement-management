@@ -60,6 +60,9 @@ function AvatarUpload({
     setUploading(true);
     try {
       const { avatar_url } = await studentService.uploadAvatar(file);
+      // Update preview to the actual stored Cloudinary URL so the correct
+      // URL is shown immediately and persists after navigation.
+      setPreview(avatar_url);
       onUploaded(avatar_url);
     } catch (err: unknown) {
       const msg = extractErrorMsg(err, "Upload failed");
@@ -94,7 +97,12 @@ function AvatarUpload({
       >
         <div className="w-24 h-24 rounded-full ring-4 ring-primary-100 dark:ring-primary-900/40 overflow-hidden bg-gradient-to-br from-primary-400 to-primary-600 flex items-center justify-center shadow-lg">
           {preview ? (
-            <img src={getFileUrl(preview)} alt="Avatar" className="w-full h-full object-cover" />
+            <img
+              src={getFileUrl(preview)}
+              alt="Avatar"
+              className="w-full h-full object-cover"
+              onError={() => setPreview(null)}
+            />
           ) : (
             <span className="text-white text-2xl font-bold">{initials}</span>
           )}
