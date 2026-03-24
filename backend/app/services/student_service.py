@@ -170,19 +170,26 @@ class StudentService:
         )
 
     async def update_avatar_url(self, user: dict, avatar_url: str) -> None:
-        """Persist new avatar_url for the student profile."""
+        """Persist new avatar_url for the student profile.
+        Uses set(merge=True) so it never raises NotFound for first-time students
+        who upload an avatar before completing their profile form.
+        """
         user_id = user["id"]
         await asyncio.to_thread(
-            self.db.collection("student_profiles").document(user_id).update,
+            self.db.collection("student_profiles").document(user_id).set,
             {"avatar_url": avatar_url, "updated_at": utcnow()},
+            merge=True,
         )
 
     async def update_marksheet_url(self, user: dict, marksheet_url: str) -> None:
-        """Persist new marksheet_url for the student profile."""
+        """Persist new marksheet_url for the student profile.
+        Uses set(merge=True) so it works even before the profile document exists.
+        """
         user_id = user["id"]
         await asyncio.to_thread(
-            self.db.collection("student_profiles").document(user_id).update,
+            self.db.collection("student_profiles").document(user_id).set,
             {"marksheet_url": marksheet_url, "updated_at": utcnow()},
+            merge=True,
         )
 
     async def list_students(

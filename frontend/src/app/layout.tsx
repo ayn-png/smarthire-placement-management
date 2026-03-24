@@ -41,6 +41,12 @@ export const metadata: Metadata = {
     title: "SmartHire",
   },
   manifest: "/manifest.json",
+  other: {
+    // W3C standard companion to apple-mobile-web-app-capable — silences the
+    // browser deprecation warning: "apple-mobile-web-app-capable is deprecated.
+    // Please include mobile-web-app-capable instead."
+    "mobile-web-app-capable": "yes",
+  },
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

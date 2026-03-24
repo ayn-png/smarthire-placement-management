@@ -21,6 +21,13 @@ api.interceptors.request.use(
         // Token refresh failed — proceed without token
       }
     }
+    // FormData uploads: delete the instance-level Content-Type so the browser
+    // sets the correct multipart/form-data boundary automatically.
+    // Without this, the application/json default leaks through and FastAPI
+    // cannot find the `file` field in the body → 422 Unprocessable Entity.
+    if (config.data instanceof FormData) {
+      delete config.headers["Content-Type"];
+    }
     return config;
   },
   (error) => Promise.reject(error)

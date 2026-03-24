@@ -1,6 +1,10 @@
 /** @type {import('next').NextConfig} */
 const IS_PRODUCTION = process.env.NODE_ENV === "production";
 
+// In production, localhost:8000 must NOT appear in CSP — it is meaningless
+// in a cloud deployment and pollutes the security policy.
+const DEV_BACKEND = IS_PRODUCTION ? "" : " http://localhost:8000";
+
 const securityHeaders = [
   { key: "X-Frame-Options", value: "DENY" },
   { key: "X-Content-Type-Options", value: "nosniff" },
@@ -16,13 +20,13 @@ const securityHeaders = [
       "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
       // data: needed for icon/web fonts embedded as data URIs
       "font-src 'self' https://fonts.gstatic.com data:",
-      // Cloudinary for uploaded images/avatars/logos; localhost:8000 for local dev
-      "img-src 'self' data: blob: https://res.cloudinary.com http://localhost:8000 https://*.onrender.com",
+      // Cloudinary for uploaded images/avatars/logos; localhost only in dev
+      `img-src 'self' data: blob: https://res.cloudinary.com${DEV_BACKEND} https://*.onrender.com`,
       // Firebase Auth: identitytoolkit + securetoken (token refresh)
       // Firebase Firestore: firestore.googleapis.com
       // Firebase Auth domain: *.firebaseapp.com (used for OAuth redirect flows)
-      // LangSmith tracing; local backend
-      "connect-src 'self' http://localhost:8000 " +
+      // LangSmith tracing; local backend only in dev
+      `connect-src 'self'${DEV_BACKEND} ` +
         "https://identitytoolkit.googleapis.com " +
         "https://securetoken.googleapis.com " +
         "https://firestore.googleapis.com " +
@@ -48,7 +52,8 @@ const securityHeaders = [
 const nextConfig = {
   images: {
     remotePatterns: [
-      { protocol: "http", hostname: "localhost" },
+      // localhost only needed in development (Render filesystem is remote)
+      ...(IS_PRODUCTION ? [] : [{ protocol: "http", hostname: "localhost" }]),
       { protocol: "https", hostname: "res.cloudinary.com" },
       { protocol: "https", hostname: "*.onrender.com" },
     ],

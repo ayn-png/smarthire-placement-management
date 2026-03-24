@@ -26,18 +26,25 @@ console_handler = logging.StreamHandler()
 console_handler.setFormatter(log_formatter)
 
 # File handler with rotation
-os.makedirs("logs", exist_ok=True)
-file_handler = RotatingFileHandler(
-    "logs/app.log",
-    maxBytes=100 * 1024 * 1024,  # 100MB
-    backupCount=10
-)
-file_handler.setFormatter(log_formatter)
+# File logging is skipped in production: Render's filesystem is ephemeral
+# and any logs written to disk are silently lost on every deploy/restart.
+# In production, stdout (console_handler) is captured by Render's log system.
+if settings.ENVIRONMENT != "production":
+    os.makedirs("logs", exist_ok=True)
+    file_handler = RotatingFileHandler(
+        "logs/app.log",
+        maxBytes=100 * 1024 * 1024,  # 100MB
+        backupCount=10
+    )
+    file_handler.setFormatter(log_formatter)
+    _log_handlers = [console_handler, file_handler]
+else:
+    _log_handlers = [console_handler]
 
 # Configure root logger
 logging.basicConfig(
     level=logging.INFO,
-    handlers=[console_handler, file_handler]
+    handlers=_log_handlers
 )
 logger = logging.getLogger(__name__)
 
