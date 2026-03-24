@@ -81,41 +81,44 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Failed to set role" }, { status: 500 });
   }
 
-  // 2. Sync user record to Firestore via backend — FATAL if it fails.
-  // Without this the Firestore users/{uid} doc is never created, and every
-  // subsequent authenticated API call returns 401 "Could not validate credentials".
-  let syncRes: Response;
-  try {
-    syncRes = await fetch(`${BACKEND_URL}/api/v1/auth/firebase-sync`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-Internal-Secret": INTERNAL_SECRET,
-        Authorization: `Bearer ${idToken}`,
-      },
-      body: JSON.stringify({
-        firebase_uid: uid,
-        email,
-        full_name: displayName,
-        role,
-      }),
-    });
-  } catch (networkErr) {
-    console.error("[set-role] Network error syncing user to backend:", networkErr);
-    return NextResponse.json(
-      { error: "Failed to create your account record. Please try again." },
-      { status: 500 }
-    );
+  // 2. Sync user record to Firestore via backend.
+  //
+  // NON-FATAL: if this call fails (INTERNAL_API_SECRET mismatch, backend cold
+  // start, transient network error) we log the problem but still return success
+  // to the client.  The Firebase custom claim (step 1) IS already set, so the
+  // client can call /auth/self-sync with the freshly-refreshed token to create
+  // the Firestore doc without needing X-Internal-Secret.
+  //
+  // We retry once after a short delay before giving up, to survive cold starts.
+  const syncPayload = JSON.stringify({ firebase_uid: uid, email, full_name: displayName, role });
+  const syncHeaders = {
+    "Content-Type": "application/json",
+    "X-Internal-Secret": INTERNAL_SECRET,
+    Authorization: `Bearer ${idToken}`,
+  };
+
+  let syncOk = false;
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    try {
+      const syncRes = await fetch(`${BACKEND_URL}/api/v1/auth/firebase-sync`, {
+        method: "POST",
+        headers: syncHeaders,
+        body: syncPayload,
+      });
+      if (syncRes.ok) { syncOk = true; break; }
+      const body = await syncRes.text().catch(() => "");
+      console.warn(`[set-role] firebase-sync attempt ${attempt} returned ${syncRes.status}: ${body}`);
+    } catch (networkErr) {
+      console.warn(`[set-role] firebase-sync attempt ${attempt} network error:`, networkErr);
+    }
+    if (attempt < 2) await new Promise((r) => setTimeout(r, 1200));
   }
 
-  if (!syncRes.ok) {
-    const body = await syncRes.text().catch(() => "");
-    console.error(`[set-role] firebase-sync returned ${syncRes.status}: ${body}`);
-    return NextResponse.json(
-      { error: "Failed to create your account record. Please try again." },
-      { status: 500 }
-    );
+  if (!syncOk) {
+    // Both attempts failed.  Custom claim is set — the client will call
+    // /auth/self-sync with the fresh token to finish creating the Firestore doc.
+    console.error("[set-role] firebase-sync failed after 2 attempts; client will self-sync.");
   }
 
-  return NextResponse.json({ success: true, role });
+  return NextResponse.json({ success: true, role, selfSyncNeeded: !syncOk });
 }

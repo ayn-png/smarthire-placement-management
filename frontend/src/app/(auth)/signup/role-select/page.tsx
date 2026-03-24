@@ -60,12 +60,35 @@ export default function RoleSelectPage() {
       });
 
       if (!res.ok) {
-        const data = await res.json();
-        throw new Error(data.error ?? "Failed to set role");
+        const data = await res.json().catch(() => ({}));
+        throw new Error((data as { error?: string }).error ?? "Failed to set role");
       }
 
-      // Force-refresh the ID token so the new custom claim (role) is present
+      const data = await res.json().catch(() => ({}));
+
+      // Force-refresh the ID token so the new custom claim (role) is in the token
       await auth.currentUser?.getIdToken(true);
+
+      // Self-sync: create the Firestore users/{uid} doc from the client using the
+      // freshly-refreshed token (which now carries the role claim).
+      // This is the fallback when the server-side firebase-sync failed
+      // (e.g. INTERNAL_API_SECRET mismatch on Render, backend cold start).
+      // Safe to call even when firebase-sync succeeded — the endpoint is idempotent.
+      try {
+        const freshToken = await auth.currentUser?.getIdToken();
+        if (freshToken) {
+          const apiUrl = (process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000").replace(/\/$/, "");
+          await fetch(`${apiUrl}/api/v1/auth/self-sync`, {
+            method: "POST",
+            headers: { Authorization: `Bearer ${freshToken}` },
+          });
+        }
+      } catch {
+        // Non-fatal — if self-sync fails the dashboard will retry
+        if ((data as { selfSyncNeeded?: boolean }).selfSyncNeeded) {
+          console.warn("[role-select] self-sync failed; user may see 401 on first dashboard load");
+        }
+      }
 
       // Set role cookie for middleware
       document.cookie = `__role=${role}; path=/; SameSite=Lax`;
