@@ -10,6 +10,7 @@ import {
   LayoutDashboard, User, FileText, Briefcase, ClipboardList,
   Brain, Building2, BarChart3, LogOut, GraduationCap,
   PieChart, TrendingUp, ChevronLeft, ChevronRight, X, Users,
+  Globe,
 } from "lucide-react";
 
 const STUDENT_NAV = [
@@ -19,6 +20,7 @@ const STUDENT_NAV = [
   { href: "/student/jobs", label: "Job Listings", icon: Briefcase },
   { href: "/student/applications", label: "My Applications", icon: ClipboardList },
   { href: "/student/interview", label: "AI Interview Prep", icon: Brain },
+  { href: "/student/market-jobs", label: "Market Jobs", icon: Globe },
 ];
 
 const ADMIN_NAV = [

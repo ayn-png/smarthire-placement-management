@@ -4,7 +4,7 @@ import { Building2, Briefcase, Users, TrendingUp, Sparkles, AlertTriangle, X } f
 import { motion } from "framer-motion";
 import StatsCard from "@/components/shared/StatsCard";
 import Card from "@/components/ui/Card";
-import { analyticsService } from "@/services/api";
+import { analyticsService, marketJobsService } from "@/services/api";
 import { AnalyticsDashboard } from "@/types";
 import LoadingSpinner from "@/components/ui/LoadingSpinner";
 import { FadeIn, StaggerContainer, StaggerItem } from "@/components/ui/Animations";
@@ -23,6 +23,7 @@ export default function AdminDashboard() {
   const [loading, setLoading] = useState(true);
   const [systemStatus, setSystemStatus] = useState<SystemStatus | null>(null);
   const [dismissedWarnings, setDismissedWarnings] = useState<Set<string>>(new Set());
+  const [marketStats, setMarketStats] = useState<Array<{ department: string; click_count: number }>>([]);
 
   useEffect(() => {
     analyticsService.getDashboard()
@@ -31,6 +32,10 @@ export default function AdminDashboard() {
       .finally(() => setLoading(false));
     analyticsService.getSystemStatus()
       .then(setSystemStatus)
+      .catch(() => {});
+    // Market Job Interest stats — non-critical, silently skip if no data yet
+    marketJobsService.getStats()
+      .then((d) => setMarketStats(d.stats))
       .catch(() => {});
   }, []);
 
@@ -206,6 +211,47 @@ export default function AdminDashboard() {
                 </motion.div>
               ))}
             </div>
+          </Card>
+        </FadeIn>
+      )}
+
+      {/* Market Job Interest — hidden until at least one click is recorded */}
+      {marketStats.length > 0 && (
+        <FadeIn delay={0.5}>
+          <Card
+            title="Market Job Interest"
+            subtitle="Student click-throughs to external jobs by department"
+          >
+            <ResponsiveContainer width="100%" height={250}>
+              <BarChart
+                data={marketStats}
+                margin={{ top: 5, right: 20, bottom: 5, left: 0 }}
+              >
+                <CartesianGrid
+                  strokeDasharray="3 3"
+                  className="stroke-surface-200 dark:stroke-surface-700"
+                />
+                <XAxis
+                  dataKey="department"
+                  tick={{ fontSize: 11 }}
+                  className="fill-surface-600 dark:fill-surface-400"
+                />
+                <YAxis
+                  tick={{ fontSize: 11 }}
+                  className="fill-surface-600 dark:fill-surface-400"
+                  allowDecimals={false}
+                />
+                <Tooltip
+                  formatter={(v: number) => [v, "Clicks"]}
+                  contentStyle={{
+                    borderRadius: "12px",
+                    border: "none",
+                    boxShadow: "0 10px 40px rgba(0,0,0,.12)",
+                  }}
+                />
+                <Bar dataKey="click_count" fill="#14b8a6" radius={[6, 6, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
           </Card>
         </FadeIn>
       )}

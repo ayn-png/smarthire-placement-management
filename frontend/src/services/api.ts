@@ -1,5 +1,5 @@
 import api from "@/lib/axios";
-import { StudentProfile, Company, Job, Application, AnalyticsDashboard, InterviewQuestion, ResumeAnalysis, AppNotification } from "@/types";
+import { StudentProfile, Company, Job, Application, AnalyticsDashboard, InterviewQuestion, ResumeAnalysis, AppNotification, MarketJob, MarketJobsListResponse } from "@/types";
 
 // ---- AUTH ----
 // login / register / logout are handled by Firebase on the client.
@@ -229,4 +229,30 @@ export const notificationService = {
   list: () => api.get<{ notifications: AppNotification[]; unread_count: number }>("/notifications").then((r) => r.data),
   markRead: (id: string) => api.patch(`/notifications/${id}/read`).then((r) => r.data),
   markAllRead: () => api.patch("/notifications/read-all").then((r) => r.data),
+};
+
+// ---- MARKET JOBS (external Arbeitnow listings) ----
+export const marketJobsService = {
+  list: (params?: {
+    search?: string;
+    role?: string;
+    location?: string;
+    remote?: boolean;
+    page?: number;
+    limit?: number;
+  }) =>
+    api.get<MarketJobsListResponse>("/market-jobs", { params }).then((r) => r.data),
+
+  recordClick: (data: { job_title: string; company_name: string }) =>
+    api
+      .post<{ message: string; department: string }>("/market-jobs/apply", data)
+      .then((r) => r.data),
+
+  getStats: () =>
+    api
+      .get<{
+        stats: Array<{ department: string; click_count: number }>;
+        total_clicks: number;
+      }>("/market-jobs/stats")
+      .then((r) => r.data),
 };

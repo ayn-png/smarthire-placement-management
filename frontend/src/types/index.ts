@@ -235,6 +235,27 @@ export interface PaginatedResponse<T> {
   limit: number;
 }
 
+// ---- MARKET JOBS (external Arbeitnow listings) ----
+export interface MarketJob {
+  slug: string;
+  company_name: string;
+  title: string;
+  description: string;
+  tags: string[];
+  job_types: string[];
+  location: string;
+  remote: boolean;
+  url: string;
+  created_at: number; // unix timestamp
+}
+
+export interface MarketJobsListResponse {
+  jobs: MarketJob[];
+  total: number;
+  page: number;
+  limit: number;
+}
+
 // Feature 11 — In-app notifications
 export interface AppNotification {
   id: string;
