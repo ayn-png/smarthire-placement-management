@@ -68,8 +68,13 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
-  // API requests: network-first with 3s timeout, fall back to cache
-  if (url.pathname.startsWith("/api/") || url.hostname === "localhost" && url.port === "8000") {
+  // API requests: network-first with 3s timeout, fall back to cache.
+  // IMPORTANT: only intercept SAME-ORIGIN requests (Next.js /api/* routes like
+  // /api/set-role). Cross-origin backend requests (smarthire-*.onrender.com)
+  // must NOT be intercepted — the SW's 3-second abort would kill them during
+  // Render cold-starts and cause silent failures on every dashboard load.
+  const isSameOrigin = url.origin === self.location.origin;
+  if (isSameOrigin && url.pathname.startsWith("/api/")) {
     event.respondWith(networkFirstWithTimeout(request, API_CACHE, 3000));
     return;
   }

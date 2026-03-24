@@ -30,7 +30,13 @@ api.interceptors.response.use(
   (response) => response,
   (error) => {
     if (error.response?.status === 401 && typeof window !== "undefined") {
-      window.location.href = "/login";
+      // Only hard-redirect to login if Firebase ALSO confirms there is no active
+      // session. If auth.currentUser exists the 401 is a backend config issue
+      // (e.g. wrong service-account key on the server) — silently reject instead
+      // of creating a middleware redirect loop (/login → /student/dashboard → …).
+      if (!auth.currentUser) {
+        window.location.href = "/login";
+      }
     }
     return Promise.reject(error);
   }
