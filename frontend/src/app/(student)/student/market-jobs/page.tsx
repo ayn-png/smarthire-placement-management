@@ -142,7 +142,7 @@ export default function MarketJobsPage() {
       ) : error ? (
         <div className="text-center py-16">
           <p className="text-red-500 dark:text-red-400 text-sm">{error}</p>
-          <Button variant="outline" size="sm" onClick={loadJobs} className="mt-4">
+          <Button variant="secondary" size="sm" onClick={loadJobs} className="mt-4">
             Retry
           </Button>
         </div>
@@ -250,7 +250,7 @@ export default function MarketJobsPage() {
             <FadeIn>
               <div className="flex items-center justify-center gap-3 pt-2">
                 <Button
-                  variant="outline"
+                  variant="secondary"
                   size="sm"
                   onClick={() => setPage((p) => Math.max(1, p - 1))}
                   disabled={page === 1}
@@ -262,7 +262,7 @@ export default function MarketJobsPage() {
                   Page {page} of {totalPages}
                 </span>
                 <Button
-                  variant="outline"
+                  variant="secondary"
                   size="sm"
                   onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
                   disabled={page === totalPages}
