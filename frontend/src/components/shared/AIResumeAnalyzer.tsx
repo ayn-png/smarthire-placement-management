@@ -24,6 +24,7 @@ import Button from "@/components/ui/Button";
 import Badge from "@/components/ui/Badge";
 import { aiResumeService } from "@/services/api";
 import { ResumeAnalysis } from "@/types";
+import { extractErrorMsg } from "@/lib/utils";
 
 // ── Score ring ────────────────────────────────────────────────────────────────
 
@@ -156,10 +157,7 @@ export default function AIResumeAnalyzer({ hasResume }: { hasResume: boolean }) 
       );
       setAnalysis(result);
     } catch (err: unknown) {
-      const msg =
-        (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail ||
-        "Analysis failed. Please try again.";
-      setError(msg);
+      setError(extractErrorMsg(err, "Analysis failed. Please try again."));
     } finally {
       setLoading(false);
     }

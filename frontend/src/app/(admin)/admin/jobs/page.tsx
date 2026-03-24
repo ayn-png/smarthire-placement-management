@@ -7,7 +7,7 @@ import Input from "@/components/ui/Input";
 import LoadingSpinner from "@/components/ui/LoadingSpinner";
 import { jobService, companyService } from "@/services/api";
 import { Job, Company, JobType } from "@/types";
-import { formatCurrency, getJobTypeBadge } from "@/lib/utils";
+import { formatCurrency, getJobTypeBadge, extractErrorMsg } from "@/lib/utils";
 import { FadeIn } from "@/components/ui/Animations";
 import RequirementsInput from "@/components/ui/RequirementsInput";
 import AllowedBranchesSelect from "@/components/ui/AllowedBranchesSelect";
@@ -134,8 +134,7 @@ export default function AdminJobsPage() {
       setShowModal(false);
       await load();
     } catch (err: unknown) {
-      const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
-      setSaveError(detail || "Failed to save job. Please check your inputs and try again.");
+      setSaveError(extractErrorMsg(err, "Failed to save job. Please check your inputs and try again."));
     } finally {
       setSaving(false);
     }
@@ -148,8 +147,7 @@ export default function AdminJobsPage() {
       await jobService.delete(id);
       await load();
     } catch (err: unknown) {
-      const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
-      setDeleteError(detail || "Failed to delete job. If applications exist, close the job instead.");
+      setDeleteError(extractErrorMsg(err, "Failed to delete job. If applications exist, close the job instead."));
     }
   }
 

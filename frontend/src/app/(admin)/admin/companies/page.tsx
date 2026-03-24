@@ -9,6 +9,7 @@ import LoadingSpinner from "@/components/ui/LoadingSpinner";
 import { companyService } from "@/services/api";
 import { Company } from "@/types";
 import { FadeIn, StaggerContainer, StaggerItem } from "@/components/ui/Animations";
+import { extractErrorMsg } from "@/lib/utils";
 
 export default function CompaniesPage() {
   const [companies, setCompanies] = useState<Company[]>([]);
@@ -70,7 +71,7 @@ export default function CompaniesPage() {
       setShowModal(false);
       await load();
     } catch (err: unknown) {
-      alert((err as { response?: { data?: { detail?: string } } })?.response?.data?.detail || "Failed to save");
+      alert(extractErrorMsg(err, "Failed to save"));
     } finally {
       setSaving(false);
     }

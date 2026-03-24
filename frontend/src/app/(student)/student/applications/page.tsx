@@ -7,7 +7,7 @@ import Button from "@/components/ui/Button";
 import LoadingSpinner from "@/components/ui/LoadingSpinner";
 import { applicationService } from "@/services/api";
 import { Application, ApplicationStatus } from "@/types";
-import { formatDate, getStatusColor } from "@/lib/utils";
+import { formatDate, getStatusColor, extractErrorMsg } from "@/lib/utils";
 import { FadeIn } from "@/components/ui/Animations";
 
 const STATUS_STEPS: ApplicationStatus[] = [
@@ -46,7 +46,7 @@ export default function ApplicationsPage() {
       await applicationService.withdraw(id);
       await load();
     } catch (err: unknown) {
-      alert((err as { response?: { data?: { detail?: string } } })?.response?.data?.detail || "Failed to withdraw");
+      alert(extractErrorMsg(err, "Failed to withdraw"));
     } finally {
       setWithdrawing(null);
     }

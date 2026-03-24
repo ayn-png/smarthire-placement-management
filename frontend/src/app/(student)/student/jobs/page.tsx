@@ -9,7 +9,7 @@ import Input from "@/components/ui/Input";
 import LoadingSpinner from "@/components/ui/LoadingSpinner";
 import { jobService, applicationService, studentService } from "@/services/api";
 import { Job, StudentProfile } from "@/types";
-import { formatSalaryRange, getJobTypeBadge } from "@/lib/utils";
+import { formatSalaryRange, getJobTypeBadge, extractErrorMsg } from "@/lib/utils";
 import { FadeIn } from "@/components/ui/Animations";
 
 export default function JobsPage() {
@@ -76,8 +76,7 @@ export default function JobsPage() {
       setApplyMessage({ type: "success", text: "Application submitted successfully!" });
       setCoverLetter("");
     } catch (err: unknown) {
-      const msg = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
-      setApplyMessage({ type: "error", text: msg || "Failed to apply" });
+      setApplyMessage({ type: "error", text: extractErrorMsg(err, "Failed to apply") });
     } finally {
       setApplying(false);
     }

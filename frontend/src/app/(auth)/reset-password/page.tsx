@@ -7,6 +7,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { Lock, Eye, EyeOff, ArrowRight, KeyRound, CheckCircle } from "lucide-react";
 import { authService } from "@/services/api";
+import { extractErrorMsg } from "@/lib/utils";
 import Button from "@/components/ui/Button";
 import Input from "@/components/ui/Input";
 import { motion, AnimatePresence } from "framer-motion";
@@ -82,14 +83,13 @@ function ResetPasswordContent() {
       await authService.resetPasswordWithToken({ token, new_password: data.password });
       setSuccess(true);
     } catch (err: unknown) {
-      const apiErr = err as { response?: { data?: { detail?: string } }; message?: string };
-      const detail = apiErr?.response?.data?.detail || "";
+      const detail = extractErrorMsg(err, "");
       if (detail.includes("expired")) {
         setServerError("This reset link has expired. Please request a new one.");
-      } else if (detail.includes("Invalid") || detail.includes("invalid")) {
+      } else if (detail.toLowerCase().includes("invalid")) {
         setServerError("This reset link is invalid or already used.");
       } else {
-        setServerError(detail || apiErr?.message || "Could not reset password. Please try again.");
+        setServerError(detail || (err as { message?: string })?.message || "Could not reset password. Please try again.");
       }
     }
   }

@@ -7,7 +7,7 @@ import LoadingSpinner from "@/components/ui/LoadingSpinner";
 import Pagination from "@/components/ui/Pagination";        // Feature 2
 import { applicationService, jobService } from "@/services/api";
 import { Application, Job } from "@/types";
-import { formatDate, getStatusColor } from "@/lib/utils";
+import { formatDate, getStatusColor, extractErrorMsg } from "@/lib/utils";
 import { FadeIn } from "@/components/ui/Animations";
 
 const STATUSES = ["PENDING","UNDER_REVIEW","SHORTLISTED","INTERVIEW_SCHEDULED","SELECTED","REJECTED"];
@@ -80,7 +80,7 @@ export default function AdminApplicationsPage() {
       await load();
       setExpanded(null);
     } catch (err: unknown) {
-      alert((err as { response?: { data?: { detail?: string } } })?.response?.data?.detail || "Failed to update");
+      alert(extractErrorMsg(err, "Failed to update"));
     } finally {
       setUpdating(null);
     }
@@ -119,7 +119,7 @@ export default function AdminApplicationsPage() {
       }
       await load();
     } catch (err: unknown) {
-      alert((err as { response?: { data?: { detail?: string } } })?.response?.data?.detail || "Bulk update failed");
+      alert(extractErrorMsg(err, "Bulk update failed"));
     } finally {
       setBulkUpdating(false);
     }

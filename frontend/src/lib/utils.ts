@@ -101,3 +101,25 @@ export function getJobTypeBadge(type: string): string {
     "bg-gray-100 dark:bg-gray-800/50 text-gray-700 dark:text-gray-300"
   );
 }
+
+/**
+ * Safely extract a readable error string from FastAPI / Pydantic v2 responses.
+ *
+ * Pydantic v2 returns `detail` as an array of objects on 422 errors:
+ *   [{ type: "missing", loc: [...], msg: "Field required", input: {} }]
+ * Older FastAPI errors return `detail` as a plain string.
+ *
+ * Rendering an array/object directly as a React child crashes with error #31:
+ *   "Objects are not valid as a React child (found: object with keys {type, loc, msg, input})"
+ *
+ * Always use this helper in every catch block instead of accessing .detail directly.
+ */
+export function extractErrorMsg(err: unknown, fallback = "Operation failed"): string {
+  const detail = (err as { response?: { data?: { detail?: unknown } } })?.response?.data?.detail;
+  if (!detail) return fallback;
+  if (typeof detail === "string") return detail;
+  if (Array.isArray(detail) && detail.length > 0) {
+    return (detail[0] as { msg?: string })?.msg ?? fallback;
+  }
+  return fallback;
+}

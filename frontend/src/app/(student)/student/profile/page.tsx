@@ -10,7 +10,7 @@ import Input from "@/components/ui/Input";
 import Button from "@/components/ui/Button";
 import { studentService, authService } from "@/services/api";
 import { StudentProfile } from "@/types";
-import { getFileUrl } from "@/lib/utils";
+import { getFileUrl, extractErrorMsg } from "@/lib/utils";
 import LoadingSpinner from "@/components/ui/LoadingSpinner";
 import { FadeIn, StaggerContainer, StaggerItem } from "@/components/ui/Animations";
 import BranchSelect, { BranchValue, BRANCH_OPTIONS } from "@/components/ui/BranchSelect";
@@ -33,19 +33,6 @@ const schema = z.object({
 });
 
 type FormData = z.infer<typeof schema>;
-
-// ── Helper: safely extract a readable string from FastAPI / Pydantic v2 errors
-// Pydantic v2 returns `detail` as an array [{type, loc, msg, input}] on 422.
-// Plain string errors are returned as-is.
-function extractErrorMsg(err: unknown, fallback = "Operation failed"): string {
-  const detail = (err as { response?: { data?: { detail?: unknown } } })?.response?.data?.detail;
-  if (!detail) return fallback;
-  if (typeof detail === "string") return detail;
-  if (Array.isArray(detail) && detail.length > 0) {
-    return (detail[0] as { msg?: string })?.msg ?? fallback;
-  }
-  return fallback;
-}
 
 // ── Avatar Upload Widget ────────────────────────────────────────────────────
 function AvatarUpload({

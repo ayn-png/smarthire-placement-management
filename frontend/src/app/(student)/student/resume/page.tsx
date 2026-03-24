@@ -9,6 +9,7 @@ import { StudentProfile } from "@/types";
 import LoadingSpinner from "@/components/ui/LoadingSpinner";
 import { FadeIn } from "@/components/ui/Animations";
 import AIResumeAnalyzer from "@/components/shared/AIResumeAnalyzer";
+import { extractErrorMsg } from "@/lib/utils";
 
 export default function ResumePage() {
   const [profile, setProfile] = useState<StudentProfile | null>(null);
@@ -51,8 +52,7 @@ export default function ResumePage() {
       const updatedProfile = await studentService.getMyProfile();
       setProfile(updatedProfile);
     } catch (err: unknown) {
-      const msg = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
-      setMessage({ type: "error", text: msg || "Upload failed. Please try again." });
+      setMessage({ type: "error", text: extractErrorMsg(err, "Upload failed. Please try again.") });
     } finally {
       setUploading(false);
     }
