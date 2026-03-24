@@ -36,21 +36,31 @@ class StudentService:
     async def create_profile(self, user: dict, data: StudentProfileCreate) -> StudentProfileResponse:
         user_id = user["id"]
 
-        # Check if profile already exists (document ID = user_id)
+        # Fetch any existing document — may be a stub created by avatar/marksheet
+        # uploads (set with merge=True) that only has avatar_url / marksheet_url.
         existing_doc = await asyncio.to_thread(
             self.db.collection("student_profiles").document(user_id).get
         )
-        if existing_doc.exists:
+        existing_data = existing_doc.to_dict() if existing_doc.exists else {}
+
+        # A REAL conflict is when this student already has a complete profile
+        # (roll_number + full_name are both set). A stub document produced by
+        # avatar/marksheet pre-uploads does NOT have these fields and is fine
+        # to overwrite with the full profile.
+        if existing_data.get("roll_number") and existing_data.get("full_name"):
             raise ConflictException("Profile already exists")
 
-        # Check for duplicate roll number
+        # Check for duplicate roll number across OTHER students only.
+        # Excluding the current user's own doc prevents false conflicts when
+        # re-saving or when a partial doc somehow has roll_number already.
         roll_query = await asyncio.to_thread(
             self.db.collection("student_profiles")
             .where("roll_number", "==", data.roll_number)
             .limit(1)
             .get
         )
-        if list(roll_query):
+        roll_docs = list(roll_query)
+        if roll_docs and roll_docs[0].id != user_id:
             raise ConflictException("Roll number already registered")
 
         if not data.marksheet_url:
@@ -63,9 +73,12 @@ class StudentService:
             "user_id": user_id,
             "full_name": data.full_name if data.full_name else user.get("full_name", ""),
             "email": user.get("email", ""),
-            "avatar_url": None,
-            "resume_url": None,
-            "created_at": now,
+            # Preserve avatar / resume already uploaded before the profile form was saved.
+            # Previously these were hardcoded to None, wiping any pre-upload file URL.
+            "avatar_url": existing_data.get("avatar_url") or None,
+            "resume_url": existing_data.get("resume_url") or None,
+            # Preserve original creation timestamp if a stub doc already existed.
+            "created_at": existing_data.get("created_at") or now,
             "updated_at": now,
         }
 
