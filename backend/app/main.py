@@ -200,12 +200,17 @@ app.add_middleware(SecurityHeadersMiddleware)
 app.add_middleware(GZipMiddleware, minimum_size=1000)
 
 # CORS Configuration
+# allow_origin_regex catches every *.onrender.com subdomain so the frontend
+# works on Render without requiring ALLOWED_ORIGINS to be explicitly set.
+# Explicit origins from the env var are also accepted (localhost for dev,
+# custom domain for production).
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.allowed_origins_list,
+    allow_origin_regex=r"https://.*\.onrender\.com",
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-    allow_headers=["Authorization", "Content-Type", "X-Request-ID"],
+    allow_headers=["Authorization", "Content-Type", "X-Request-ID", "X-Internal-Secret"],
 )
 
 # Include all API routers

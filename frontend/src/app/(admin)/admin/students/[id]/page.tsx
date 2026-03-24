@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import {
   ArrowLeft, Mail, Phone, GraduationCap, Star, MapPin,
-  Linkedin, Github, FileText, User, BookOpen, Award,
+  Linkedin, Github, FileText, User, BookOpen, Award, Eye, EyeOff,
 } from "lucide-react";
 import { motion } from "framer-motion";
 import Card from "@/components/ui/Card";
@@ -20,6 +20,7 @@ export default function AdminStudentDetailPage() {
   const [profile, setProfile] = useState<StudentProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [showResume, setShowResume] = useState(false);
 
   useEffect(() => {
     studentService
@@ -185,27 +186,52 @@ export default function AdminStudentDetailPage() {
         {/* ── Links & Resume ────────────────────────────────────────────────── */}
         <StaggerItem>
           <Card title="Links & Documents">
-            <div className="flex flex-wrap gap-3">
-              {resumeUrl && (
-                <a href={resumeUrl} target="_blank" rel="noopener noreferrer"
-                  className="flex items-center gap-2 px-4 py-2.5 bg-primary-600 hover:bg-primary-700 text-white text-sm font-medium rounded-xl transition-colors shadow-sm">
-                  <FileText className="w-4 h-4" /> Download Resume
-                </a>
-              )}
-              {(profile as StudentProfile & { linkedin_url?: string }).linkedin_url && (
-                <a href={(profile as StudentProfile & { linkedin_url?: string }).linkedin_url} target="_blank" rel="noopener noreferrer"
-                  className="flex items-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-xl transition-colors shadow-sm">
-                  <Linkedin className="w-4 h-4" /> LinkedIn
-                </a>
-              )}
-              {(profile as StudentProfile & { github_url?: string }).github_url && (
-                <a href={(profile as StudentProfile & { github_url?: string }).github_url} target="_blank" rel="noopener noreferrer"
-                  className="flex items-center gap-2 px-4 py-2.5 bg-surface-800 dark:bg-surface-700 hover:bg-surface-900 dark:hover:bg-surface-600 text-white text-sm font-medium rounded-xl transition-colors shadow-sm">
-                  <Github className="w-4 h-4" /> GitHub
-                </a>
-              )}
-              {!resumeUrl && !(profile as StudentProfile & { linkedin_url?: string }).linkedin_url && !(profile as StudentProfile & { github_url?: string }).github_url && (
-                <p className="text-sm text-surface-400 dark:text-surface-500">No links or resume uploaded</p>
+            <div className="space-y-4">
+              <div className="flex flex-wrap gap-3">
+                {resumeUrl && (
+                  <>
+                    {/* Toggle inline viewer */}
+                    <button
+                      onClick={() => setShowResume((v) => !v)}
+                      className="flex items-center gap-2 px-4 py-2.5 bg-primary-600 hover:bg-primary-700 text-white text-sm font-medium rounded-xl transition-colors shadow-sm"
+                    >
+                      {showResume ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                      {showResume ? "Hide Resume" : "View Resume"}
+                    </button>
+                    {/* Download / open in new tab */}
+                    <a href={resumeUrl} target="_blank" rel="noopener noreferrer"
+                      className="flex items-center gap-2 px-4 py-2.5 bg-surface-100 dark:bg-surface-700 hover:bg-surface-200 dark:hover:bg-surface-600 text-surface-800 dark:text-surface-200 text-sm font-medium rounded-xl transition-colors shadow-sm border border-surface-200 dark:border-surface-600">
+                      <FileText className="w-4 h-4" /> Download
+                    </a>
+                  </>
+                )}
+                {(profile as StudentProfile & { linkedin_url?: string }).linkedin_url && (
+                  <a href={(profile as StudentProfile & { linkedin_url?: string }).linkedin_url} target="_blank" rel="noopener noreferrer"
+                    className="flex items-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-xl transition-colors shadow-sm">
+                    <Linkedin className="w-4 h-4" /> LinkedIn
+                  </a>
+                )}
+                {(profile as StudentProfile & { github_url?: string }).github_url && (
+                  <a href={(profile as StudentProfile & { github_url?: string }).github_url} target="_blank" rel="noopener noreferrer"
+                    className="flex items-center gap-2 px-4 py-2.5 bg-surface-800 dark:bg-surface-700 hover:bg-surface-900 dark:hover:bg-surface-600 text-white text-sm font-medium rounded-xl transition-colors shadow-sm">
+                    <Github className="w-4 h-4" /> GitHub
+                  </a>
+                )}
+                {!resumeUrl && !(profile as StudentProfile & { linkedin_url?: string }).linkedin_url && !(profile as StudentProfile & { github_url?: string }).github_url && (
+                  <p className="text-sm text-surface-400 dark:text-surface-500">No links or resume uploaded</p>
+                )}
+              </div>
+
+              {/* Inline PDF viewer — shown when admin clicks "View Resume" */}
+              {resumeUrl && showResume && (
+                <div className="rounded-xl overflow-hidden border border-surface-200 dark:border-surface-700 shadow-sm">
+                  <iframe
+                    src={resumeUrl}
+                    title={`${profile.full_name} — Resume`}
+                    className="w-full"
+                    style={{ height: "780px", border: "none" }}
+                  />
+                </div>
               )}
             </div>
           </Card>

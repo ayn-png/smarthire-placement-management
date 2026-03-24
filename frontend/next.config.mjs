@@ -34,8 +34,9 @@ const securityHeaders = [
         "https://*.googleapis.com " +
         "https://api.smith.langchain.com " +
         "https://*.onrender.com",
-      // Firebase Auth uses an iframe for redirect-based OAuth flows
-      "frame-src https://*.firebaseapp.com https://accounts.google.com",
+      // Firebase Auth uses an iframe for redirect-based OAuth flows.
+      // res.cloudinary.com allows inline PDF resume viewing via <iframe>.
+      "frame-src https://*.firebaseapp.com https://accounts.google.com https://res.cloudinary.com",
       // Service worker needs blob: and 'self'
       "worker-src blob: 'self'",
       "object-src 'none'",
