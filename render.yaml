@@ -13,7 +13,7 @@ services:
       - key: SUPER_ADMIN_EMAIL
         value: REDACTED_EMAIL
       - key: SUPER_ADMIN_PASSWORD
-        value: REDACTED_PASSWORD
+        value: "REDACTED_PASSWORD"
       - key: SUPER_ADMIN_SECRET
         value: REDACTED_SECRET
       # Add these in the Render dashboard (secret values):
@@ -39,7 +39,7 @@ services:
       - key: SUPER_ADMIN_EMAIL
         value: REDACTED_EMAIL
       - key: SUPER_ADMIN_PASSWORD
-        value: REDACTED_PASSWORD
+        value: "REDACTED_PASSWORD"
       - key: SUPER_ADMIN_SECRET
         value: REDACTED_SECRET
       # Add these in the Render dashboard (secret values):
