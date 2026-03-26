@@ -10,6 +10,12 @@ services:
     envVars:
       - key: NODE_ENV
         value: production
+      - key: SUPER_ADMIN_EMAIL
+        value: REDACTED_EMAIL
+      - key: SUPER_ADMIN_PASSWORD
+        value: REDACTED_PASSWORD
+      - key: SUPER_ADMIN_SECRET
+        value: REDACTED_SECRET
       # Add these in the Render dashboard (secret values):
       # NEXT_PUBLIC_API_URL         = https://<your-backend>.onrender.com
       # NEXT_PUBLIC_FIREBASE_API_KEY
@@ -30,6 +36,12 @@ services:
     envVars:
       - key: PORT
         value: 8000
+      - key: SUPER_ADMIN_EMAIL
+        value: REDACTED_EMAIL
+      - key: SUPER_ADMIN_PASSWORD
+        value: REDACTED_PASSWORD
+      - key: SUPER_ADMIN_SECRET
+        value: REDACTED_SECRET
       # Add these in the Render dashboard (secret values):
       # FIREBASE_PROJECT_ID
       # FIREBASE_SERVICE_ACCOUNT_JSON

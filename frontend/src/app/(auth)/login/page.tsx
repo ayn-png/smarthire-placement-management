@@ -86,7 +86,14 @@ export default function LoginPage() {
         router.push("/super-admin");
         return;
       }
-    } catch { /* non-fatal — fall through to Firebase login */ }
+      // Email matched super admin but password was wrong — stop here, don't try Firebase
+      const saBody = await saRes.json().catch(() => ({})) as { type?: string };
+      if (saBody?.type === "wrong_password") {
+        setServerError("Invalid super admin password.");
+        return;
+      }
+      // type === "not_super_admin" → fall through to Firebase login below
+    } catch { /* network error — fall through to Firebase login */ }
 
     try {
       const userCredential = await signInWithEmailAndPassword(auth, data.email, data.password);
