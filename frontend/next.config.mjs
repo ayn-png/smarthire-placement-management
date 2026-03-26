@@ -16,12 +16,14 @@ const securityHeaders = [
     value: [
       "default-src 'self'",
       // Firebase SDK needs unsafe-inline/unsafe-eval; blob: for service worker
-      "script-src 'self' 'unsafe-inline' 'unsafe-eval' blob:",
-      "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+      // Google Sign-In loads scripts from apis.google.com and www.gstatic.com
+      "script-src 'self' 'unsafe-inline' 'unsafe-eval' blob: https://apis.google.com https://www.gstatic.com",
+      // Google Sign-In injects styles; fonts.googleapis.com for web fonts
+      "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://accounts.google.com",
       // data: needed for icon/web fonts embedded as data URIs
       "font-src 'self' https://fonts.gstatic.com data:",
-      // Cloudinary for uploaded images/avatars/logos; localhost only in dev
-      `img-src 'self' data: blob: https://res.cloudinary.com${DEV_BACKEND} https://*.onrender.com`,
+      // Cloudinary for uploaded images/avatars/logos; Google profile photos; localhost only in dev
+      `img-src 'self' data: blob: https://res.cloudinary.com https://lh3.googleusercontent.com https://www.gstatic.com${DEV_BACKEND} https://*.onrender.com`,
       // Firebase Auth: identitytoolkit + securetoken (token refresh)
       // Firebase Firestore: firestore.googleapis.com
       // Firebase Auth domain: *.firebaseapp.com (used for OAuth redirect flows)
@@ -35,8 +37,9 @@ const securityHeaders = [
         "https://api.smith.langchain.com " +
         "https://*.onrender.com",
       // Firebase Auth uses an iframe for redirect-based OAuth flows.
+      // accounts.google.com + apis.google.com needed for Google Sign-In popup.
       // res.cloudinary.com allows inline PDF resume viewing via <iframe>.
-      "frame-src https://*.firebaseapp.com https://accounts.google.com https://res.cloudinary.com",
+      "frame-src https://*.firebaseapp.com https://accounts.google.com https://apis.google.com https://res.cloudinary.com",
       // Service worker needs blob: and 'self'
       "worker-src blob: 'self'",
       "object-src 'none'",
