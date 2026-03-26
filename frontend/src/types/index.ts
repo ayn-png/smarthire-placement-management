@@ -43,6 +43,14 @@ export interface StudentProfile {
   is_placed?: boolean;
   placed_company?: string;
   placed_package?: number;
+  marks_10th?: number;
+  board_10th?: string;
+  marksheet_10th_url?: string;
+  marks_12th?: number;
+  board_12th?: string;
+  marksheet_12th_url?: string;
+  aadhar_last4?: string;
+  aadhar_doc_url?: string;
   created_at: string;
   updated_at: string;
 }
@@ -273,6 +281,11 @@ export interface AppNotification {
 
 // Feature 2 — Placement Drives
 export type DriveStatus = "UPCOMING" | "ONGOING" | "COMPLETED" | "CANCELLED";
+export type DriveType = "ON_CAMPUS" | "OFF_CAMPUS" | "INTERNSHIP" | "PPO";
+export type VenueType = "ONLINE" | "OFFLINE" | "HYBRID";
+export type ModeType = "ONLINE" | "OFFLINE";
+export type GenderPref = "ANY" | "MALE" | "FEMALE";
+
 export interface PlacementDrive {
   id: string;
   title: string;
@@ -280,10 +293,22 @@ export interface PlacementDrive {
   company_id?: string;
   company_name?: string;
   job_ids: string[];
+  job_id?: string;  // auto-created job ID
   drive_date: string;
+  drive_time?: string;
+  drive_type?: DriveType;
+  venue?: string;
+  venue_type?: VenueType;
+  mode?: ModeType;
   eligible_branches: string[];
   min_cgpa: number;
-  venue?: string;
+  batch?: string;
+  backlog_allowed?: boolean;
+  max_backlogs?: number;
+  gap_allowed?: boolean;
+  gender_preference?: GenderPref;
+  rounds?: string[];
+  openings?: number;
   status: DriveStatus;
   created_at: string;
   updated_at: string;
@@ -323,4 +348,63 @@ export interface RankingResponse {
   ranked: ApplicantRank[];
   cached: boolean;
   ranked_at: string;
+}
+
+// Interview Rounds
+export interface Round {
+  id: string;
+  application_id: string;
+  job_id: string;
+  student_id: string;
+  round_number: number;
+  round_name: string;
+  round_type: "WRITTEN" | "TECHNICAL" | "HR" | "GROUP_DISCUSSION" | "APTITUDE";
+  scheduled_date: string;
+  venue?: string;
+  meeting_link?: string;
+  result: "PENDING" | "PASS" | "FAIL";
+  admin_notes?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+// Identity Verification
+export type VerificationStatus = "PENDING" | "VERIFIED" | "REJECTED";
+export interface Verification {
+  id: string;
+  student_id: string;
+  document_url: string;
+  extracted_name?: string;
+  extracted_dob?: string;
+  extracted_aadhar_last4?: string;
+  name_match?: boolean;
+  dob_match?: boolean;
+  aadhar_last4_match?: boolean;
+  overall_confidence?: "HIGH" | "MEDIUM" | "LOW";
+  status: VerificationStatus;
+  admin_notes?: string;
+  submitted_at: string;
+  reviewed_at?: string;
+}
+
+// Placement Admin Profile
+export interface PlacementAdminProfile {
+  id: string;
+  email?: string;
+  full_name?: string;
+  phone?: string;
+  college_name?: string;
+  designation?: string;
+  avatar_url?: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
+// System Settings
+export interface SystemSettings {
+  owner_email?: string;
+  max_file_size_mb?: number;
+  notify_new_jobs_email?: boolean;
+  notification_batch_limit?: number;
+  updated_at?: string;
 }

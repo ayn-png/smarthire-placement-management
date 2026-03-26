@@ -1,14 +1,17 @@
 "use client";
 import { useEffect, useState } from "react";
-import { CalendarDays, Plus, Edit2, Trash2, Building2, MapPin, Users, AlertCircle } from "lucide-react";
+import { useRouter } from "next/navigation";
+import {
+  CalendarDays, Plus, Edit2, Trash2, Building2, MapPin, Users,
+  AlertCircle, Target, ClipboardList,
+} from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import Card from "@/components/ui/Card";
 import Button from "@/components/ui/Button";
-import Badge from "@/components/ui/Badge";
 import LoadingSpinner from "@/components/ui/LoadingSpinner";
 import { FadeIn } from "@/components/ui/Animations";
-import { placementDriveService } from "@/services/api";
-import { PlacementDrive } from "@/types";
+import { placementDriveService, companyService } from "@/services/api";
+import { PlacementDrive, DriveType, GenderPref } from "@/types";
 import { extractErrorMsg } from "@/lib/utils";
 
 const STATUS_COLORS: Record<string, string> = {
@@ -22,17 +25,25 @@ const EMPTY_FORM = {
   title: "", description: "", company_id: "", drive_date: "",
   venue: "", min_cgpa: 0, status: "UPCOMING" as PlacementDrive["status"],
   eligible_branches: [] as string[], job_ids: [] as string[],
+  drive_type: "ON_CAMPUS" as DriveType, drive_time: "",
+  batch: "", backlog_allowed: false, max_backlogs: undefined as number | undefined,
+  gap_allowed: false, gender_preference: "ANY" as GenderPref,
+  rounds: [] as string[],
+  openings: 1,
 };
 
 export default function AdminPlacementDrivesPage() {
+  const router = useRouter();
   const [drives, setDrives] = useState<PlacementDrive[]>([]);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [editingDrive, setEditingDrive] = useState<PlacementDrive | null>(null);
   const [form, setForm] = useState({ ...EMPTY_FORM });
+  const [roundInput, setRoundInput] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
+  const [companies, setCompanies] = useState<{ id: string; name: string }[]>([]);
 
   async function loadDrives() {
     try {
@@ -45,7 +56,13 @@ export default function AdminPlacementDrivesPage() {
     }
   }
 
-  useEffect(() => { loadDrives(); }, []);
+  useEffect(() => {
+    loadDrives();
+    // Load companies for dropdown
+    companyService.list({ limit: 100 }).then((res) => {
+      setCompanies((res.companies || []).map((c: any) => ({ id: c.id, name: c.name })));
+    }).catch(() => {/* non-fatal */});
+  }, []);
 
   function openCreate() {
     setEditingDrive(null);
@@ -66,19 +83,33 @@ export default function AdminPlacementDrivesPage() {
       status: drive.status,
       eligible_branches: drive.eligible_branches,
       job_ids: drive.job_ids,
+      drive_type: drive.drive_type || "ON_CAMPUS",
+      drive_time: drive.drive_time || "",
+      batch: drive.batch || "",
+      backlog_allowed: drive.backlog_allowed || false,
+      max_backlogs: drive.max_backlogs,
+      gap_allowed: drive.gap_allowed || false,
+      gender_preference: drive.gender_preference || "ANY",
+      rounds: drive.rounds ?? [],
+      openings: drive.openings ?? 1,
     });
     setError("");
     setShowModal(true);
   }
 
   async function handleSave() {
+    if (!form.title.trim() || !form.drive_date || !form.company_id || form.eligible_branches.length === 0) {
+      setError("Please fill in all required fields: Title, Company, Drive Date, and at least one Branch.");
+      return;
+    }
     setSaving(true);
     setError("");
     try {
+      const payload = { ...form, drive_time: form.drive_time || undefined, batch: form.batch || undefined };
       if (editingDrive) {
-        await placementDriveService.update(editingDrive.id, form);
+        await placementDriveService.update(editingDrive.id, payload);
       } else {
-        await placementDriveService.create(form);
+        await placementDriveService.create(payload);
       }
       setShowModal(false);
       loadDrives();
@@ -166,7 +197,7 @@ export default function AdminPlacementDrivesPage() {
                 <div className="space-y-1.5 text-xs text-surface-500 dark:text-surface-400">
                   <div className="flex items-center gap-1.5">
                     <CalendarDays className="w-3.5 h-3.5" />
-                    <span>{drive.drive_date}</span>
+                    <span>{drive.drive_date}{drive.drive_time ? ` at ${drive.drive_time}` : ""}</span>
                   </div>
                   {drive.company_name && (
                     <div className="flex items-center gap-1.5">
@@ -187,10 +218,30 @@ export default function AdminPlacementDrivesPage() {
                     </div>
                   )}
                 </div>
-                <div className="mt-3 pt-3 border-t border-surface-100 dark:border-surface-700 flex items-center gap-2">
+                <div className="mt-3 pt-3 border-t border-surface-100 dark:border-surface-700 flex items-center gap-2 flex-wrap">
                   <span className="text-xs text-surface-400">Min CGPA: {drive.min_cgpa}</span>
                   <span className="text-xs text-surface-300 dark:text-surface-600">•</span>
                   <span className="text-xs text-surface-400">{drive.job_ids.length} job{drive.job_ids.length !== 1 ? "s" : ""}</span>
+                  {drive.drive_type && (
+                    <>
+                      <span className="text-xs text-surface-300 dark:text-surface-600">•</span>
+                      <span className="text-xs text-surface-400">{drive.drive_type.replace("_", " ")}</span>
+                    </>
+                  )}
+                </div>
+                <div className="mt-4 pt-3 border-t border-surface-100 dark:border-surface-700 flex gap-2">
+                  <button
+                    onClick={() => router.push(`/admin/placement-drives/${drive.id}/rounds`)}
+                    className="flex-1 flex items-center justify-center gap-1.5 py-2 text-xs font-medium rounded-xl bg-primary-50 dark:bg-primary-900/20 text-primary-700 dark:text-primary-300 hover:bg-primary-100 dark:hover:bg-primary-900/40 transition-colors"
+                  >
+                    <Target className="w-3.5 h-3.5" /> Rounds
+                  </button>
+                  <button
+                    onClick={() => router.push(`/admin/placement-drives/${drive.id}/applications`)}
+                    className="flex-1 flex items-center justify-center gap-1.5 py-2 text-xs font-medium rounded-xl bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100 dark:hover:bg-emerald-900/40 transition-colors"
+                  >
+                    <ClipboardList className="w-3.5 h-3.5" /> Applications
+                  </button>
                 </div>
               </motion.div>
             </FadeIn>
@@ -212,74 +263,226 @@ export default function AdminPlacementDrivesPage() {
               initial={{ scale: 0.95, y: 20 }}
               animate={{ scale: 1, y: 0 }}
               exit={{ scale: 0.95, y: 20 }}
-              className="bg-white dark:bg-surface-800 rounded-2xl p-6 w-full max-w-lg shadow-xl max-h-[90vh] overflow-y-auto"
+              className="bg-white dark:bg-surface-800 rounded-2xl p-6 w-full max-w-lg shadow-xl max-h-[85vh] overflow-y-auto"
             >
               <h2 className="text-lg font-bold text-surface-900 dark:text-white mb-4">
                 {editingDrive ? "Edit Drive" : "Create Placement Drive"}
               </h2>
               {error && <p className="text-sm text-red-500 mb-3">{error}</p>}
               <div className="space-y-3">
+
+                {/* BASIC DETAILS */}
+                <p className="text-xs font-semibold text-surface-500 dark:text-surface-400 uppercase tracking-wider mb-2 mt-1">Basic Details</p>
+
+                {/* Title */}
                 <div>
-                  <label className="text-sm font-medium text-surface-700 dark:text-surface-300">Title *</label>
-                  <input
-                    value={form.title}
-                    onChange={(e) => setForm({ ...form, title: e.target.value })}
+                  <label className="text-sm font-medium text-surface-700 dark:text-surface-300">Drive Title *</label>
+                  <input value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })}
                     className="mt-1 w-full px-3 py-2 border border-surface-300 dark:border-surface-600 rounded-xl text-sm bg-white dark:bg-surface-700 text-surface-900 dark:text-surface-100 focus:outline-none focus:ring-2 focus:ring-primary-500"
-                    placeholder="Campus Placement Drive 2025"
-                  />
+                    placeholder="e.g. TCS Campus Drive 2025" />
                 </div>
+
+                {/* Company */}
                 <div>
-                  <label className="text-sm font-medium text-surface-700 dark:text-surface-300">Drive Date *</label>
-                  <input
-                    type="date"
-                    value={form.drive_date}
-                    onChange={(e) => setForm({ ...form, drive_date: e.target.value })}
-                    className="mt-1 w-full px-3 py-2 border border-surface-300 dark:border-surface-600 rounded-xl text-sm bg-white dark:bg-surface-700 text-surface-900 dark:text-surface-100 focus:outline-none focus:ring-2 focus:ring-primary-500"
-                  />
-                </div>
-                <div>
-                  <label className="text-sm font-medium text-surface-700 dark:text-surface-300">Venue</label>
-                  <input
-                    value={form.venue}
-                    onChange={(e) => setForm({ ...form, venue: e.target.value })}
-                    className="mt-1 w-full px-3 py-2 border border-surface-300 dark:border-surface-600 rounded-xl text-sm bg-white dark:bg-surface-700 text-surface-900 dark:text-surface-100 focus:outline-none focus:ring-2 focus:ring-primary-500"
-                    placeholder="Auditorium / Online"
-                  />
-                </div>
-                <div>
-                  <label className="text-sm font-medium text-surface-700 dark:text-surface-300">Min CGPA</label>
-                  <input
-                    type="number"
-                    min={0}
-                    max={10}
-                    step={0.1}
-                    value={form.min_cgpa}
-                    onChange={(e) => setForm({ ...form, min_cgpa: parseFloat(e.target.value) || 0 })}
-                    className="mt-1 w-full px-3 py-2 border border-surface-300 dark:border-surface-600 rounded-xl text-sm bg-white dark:bg-surface-700 text-surface-900 dark:text-surface-100 focus:outline-none focus:ring-2 focus:ring-primary-500"
-                  />
-                </div>
-                <div>
-                  <label className="text-sm font-medium text-surface-700 dark:text-surface-300">Status</label>
-                  <select
-                    value={form.status}
-                    onChange={(e) => setForm({ ...form, status: e.target.value as PlacementDrive["status"] })}
-                    className="mt-1 w-full px-3 py-2 border border-surface-300 dark:border-surface-600 rounded-xl text-sm bg-white dark:bg-surface-700 text-surface-900 dark:text-surface-100 focus:outline-none focus:ring-2 focus:ring-primary-500"
-                  >
-                    {["UPCOMING", "ONGOING", "COMPLETED", "CANCELLED"].map((s) => (
-                      <option key={s} value={s}>{s}</option>
-                    ))}
+                  <label className="text-sm font-medium text-surface-700 dark:text-surface-300">Company *</label>
+                  <select value={form.company_id} onChange={(e) => setForm({ ...form, company_id: e.target.value })}
+                    className="mt-1 w-full px-3 py-2 border border-surface-300 dark:border-surface-600 rounded-xl text-sm bg-white dark:bg-surface-700 text-surface-900 dark:text-surface-100 focus:outline-none focus:ring-2 focus:ring-primary-500">
+                    <option value="">Select company...</option>
+                    {companies.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
                   </select>
                 </div>
+
+                {/* Drive Type + Status */}
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-sm font-medium text-surface-700 dark:text-surface-300">Drive Type *</label>
+                    <select value={form.drive_type} onChange={(e) => setForm({ ...form, drive_type: e.target.value as DriveType })}
+                      className="mt-1 w-full px-3 py-2 border border-surface-300 dark:border-surface-600 rounded-xl text-sm bg-white dark:bg-surface-700 text-surface-900 dark:text-surface-100 focus:outline-none focus:ring-2 focus:ring-primary-500">
+                      <option value="ON_CAMPUS">On-Campus</option>
+                      <option value="OFF_CAMPUS">Off-Campus</option>
+                      <option value="INTERNSHIP">Internship</option>
+                      <option value="PPO">PPO</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium text-surface-700 dark:text-surface-300">Status</label>
+                    <select value={form.status} onChange={(e) => setForm({ ...form, status: e.target.value as PlacementDrive["status"] })}
+                      className="mt-1 w-full px-3 py-2 border border-surface-300 dark:border-surface-600 rounded-xl text-sm bg-white dark:bg-surface-700 text-surface-900 dark:text-surface-100 focus:outline-none focus:ring-2 focus:ring-primary-500">
+                      {["UPCOMING", "ONGOING", "COMPLETED", "CANCELLED"].map((s) => <option key={s} value={s}>{s}</option>)}
+                    </select>
+                  </div>
+                </div>
+
+                {/* Date + Time */}
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-sm font-medium text-surface-700 dark:text-surface-300">Drive Date *</label>
+                    <input type="date" value={form.drive_date} onChange={(e) => setForm({ ...form, drive_date: e.target.value })}
+                      className="mt-1 w-full px-3 py-2 border border-surface-300 dark:border-surface-600 rounded-xl text-sm bg-white dark:bg-surface-700 text-surface-900 dark:text-surface-100 focus:outline-none focus:ring-2 focus:ring-primary-500" />
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium text-surface-700 dark:text-surface-300">Time</label>
+                    <input type="time" value={form.drive_time ?? ""} onChange={(e) => setForm({ ...form, drive_time: e.target.value })}
+                      className="mt-1 w-full px-3 py-2 border border-surface-300 dark:border-surface-600 rounded-xl text-sm bg-white dark:bg-surface-700 text-surface-900 dark:text-surface-100 focus:outline-none focus:ring-2 focus:ring-primary-500" />
+                  </div>
+                </div>
+
+                {/* Venue + Openings */}
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-sm font-medium text-surface-700 dark:text-surface-300">Venue</label>
+                    <input type="text" value={form.venue ?? ""} onChange={(e) => setForm({ ...form, venue: e.target.value })}
+                      placeholder="e.g. Auditorium A / Google Meet"
+                      className="mt-1 w-full px-3 py-2 border border-surface-300 dark:border-surface-600 rounded-xl text-sm bg-white dark:bg-surface-700 text-surface-900 dark:text-surface-100 focus:outline-none focus:ring-2 focus:ring-primary-500" />
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium text-surface-700 dark:text-surface-300">Openings *</label>
+                    <input type="number" min={1} value={form.openings} onChange={(e) => setForm({ ...form, openings: parseInt(e.target.value) || 1 })}
+                      className="mt-1 w-full px-3 py-2 border border-surface-300 dark:border-surface-600 rounded-xl text-sm bg-white dark:bg-surface-700 text-surface-900 dark:text-surface-100 focus:outline-none focus:ring-2 focus:ring-primary-500" />
+                  </div>
+                </div>
+
+                {/* Description */}
                 <div>
                   <label className="text-sm font-medium text-surface-700 dark:text-surface-300">Description</label>
-                  <textarea
-                    value={form.description}
-                    onChange={(e) => setForm({ ...form, description: e.target.value })}
-                    rows={3}
+                  <textarea value={form.description ?? ""} onChange={(e) => setForm({ ...form, description: e.target.value })} rows={3}
                     className="mt-1 w-full px-3 py-2 border border-surface-300 dark:border-surface-600 rounded-xl text-sm bg-white dark:bg-surface-700 text-surface-900 dark:text-surface-100 focus:outline-none focus:ring-2 focus:ring-primary-500 resize-none"
-                    placeholder="Details about the drive..."
-                  />
+                    placeholder="Details about the drive..." />
                 </div>
+
+                {/* ELIGIBILITY */}
+                <p className="text-xs font-semibold text-surface-500 dark:text-surface-400 uppercase tracking-wider mb-2 mt-3">Eligibility Criteria</p>
+
+                {/* Min CGPA + Batch */}
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-sm font-medium text-surface-700 dark:text-surface-300">Min CGPA *</label>
+                    <input type="number" min={0} max={10} step={0.1} value={form.min_cgpa} onChange={(e) => setForm({ ...form, min_cgpa: parseFloat(e.target.value) || 0 })}
+                      className="mt-1 w-full px-3 py-2 border border-surface-300 dark:border-surface-600 rounded-xl text-sm bg-white dark:bg-surface-700 text-surface-900 dark:text-surface-100 focus:outline-none focus:ring-2 focus:ring-primary-500" />
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium text-surface-700 dark:text-surface-300">Batch</label>
+                    <select value={form.batch ?? ""} onChange={(e) => setForm({ ...form, batch: e.target.value })}
+                      className="mt-1 w-full px-3 py-2 border border-surface-300 dark:border-surface-600 rounded-xl text-sm bg-white dark:bg-surface-700 text-surface-900 dark:text-surface-100 focus:outline-none focus:ring-2 focus:ring-primary-500">
+                      <option value="">Any</option>
+                      {["2024", "2025", "2026", "2027"].map((b) => <option key={b} value={b}>{b}</option>)}
+                    </select>
+                  </div>
+                </div>
+
+                {/* Allowed Branches */}
+                <div>
+                  <label className="text-sm font-medium text-surface-700 dark:text-surface-300 block mb-2">Allowed Branches *</label>
+                  <div className="grid grid-cols-3 gap-1.5">
+                    {["CSE", "IT", "ECE", "EEE", "ME", "CE", "CHE", "MCA", "MBA"].map((branch) => (
+                      <label key={branch} className="flex items-center gap-1.5 cursor-pointer">
+                        <input type="checkbox" checked={form.eligible_branches.includes(branch)}
+                          onChange={(e) => {
+                            const branches = e.target.checked
+                              ? [...form.eligible_branches, branch]
+                              : form.eligible_branches.filter((b) => b !== branch);
+                            setForm({ ...form, eligible_branches: branches });
+                          }}
+                          className="rounded" />
+                        <span className="text-xs text-surface-700 dark:text-surface-300">{branch}</span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Backlog Allowed */}
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm font-medium text-surface-700 dark:text-surface-300">Backlog Allowed *</p>
+                    </div>
+                    <div className="flex gap-2">
+                      {["Yes", "No"].map((v) => (
+                        <button key={v} type="button"
+                          onClick={() => setForm({ ...form, backlog_allowed: v === "Yes", max_backlogs: v === "No" ? undefined : form.max_backlogs })}
+                          className={`px-3 py-1.5 text-xs rounded-lg font-medium transition-colors ${(v === "Yes" ? form.backlog_allowed : !form.backlog_allowed) ? "bg-primary-600 text-white" : "bg-surface-100 dark:bg-surface-700 text-surface-700 dark:text-surface-300"}`}>
+                          {v}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  {form.backlog_allowed && (
+                    <div>
+                      <label className="text-sm font-medium text-surface-700 dark:text-surface-300">Max Backlogs Allowed</label>
+                      <input type="number" min={0} value={form.max_backlogs ?? ""} onChange={(e) => setForm({ ...form, max_backlogs: parseInt(e.target.value) || undefined })}
+                        className="mt-1 w-full px-3 py-2 border border-surface-300 dark:border-surface-600 rounded-xl text-sm bg-white dark:bg-surface-700 text-surface-900 dark:text-surface-100 focus:outline-none focus:ring-2 focus:ring-primary-500"
+                        placeholder="0 = unlimited" />
+                    </div>
+                  )}
+                </div>
+
+                {/* Gap Allowed + Gender Preference */}
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <p className="text-sm font-medium text-surface-700 dark:text-surface-300 mb-1.5">Gap Allowed *</p>
+                    <div className="flex gap-2">
+                      {["Yes", "No"].map((v) => (
+                        <button key={v} type="button"
+                          onClick={() => setForm({ ...form, gap_allowed: v === "Yes" })}
+                          className={`px-3 py-1.5 text-xs rounded-lg font-medium transition-colors ${(v === "Yes" ? form.gap_allowed : !form.gap_allowed) ? "bg-primary-600 text-white" : "bg-surface-100 dark:bg-surface-700 text-surface-700 dark:text-surface-300"}`}>
+                          {v}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium text-surface-700 dark:text-surface-300">Gender Preference</label>
+                    <select value={form.gender_preference ?? "ANY"} onChange={(e) => setForm({ ...form, gender_preference: e.target.value as GenderPref })}
+                      className="mt-1 w-full px-3 py-2 border border-surface-300 dark:border-surface-600 rounded-xl text-sm bg-white dark:bg-surface-700 text-surface-900 dark:text-surface-100 focus:outline-none focus:ring-2 focus:ring-primary-500">
+                      <option value="ANY">Any</option>
+                      <option value="MALE">Male Only</option>
+                      <option value="FEMALE">Female Only</option>
+                    </select>
+                  </div>
+                </div>
+
+                {/* Interview Rounds */}
+                <div>
+                  <label className="text-sm font-medium text-surface-700 dark:text-surface-300 block mb-2">Interview Rounds</label>
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      value={roundInput}
+                      onChange={(e) => setRoundInput(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" && roundInput.trim()) {
+                          e.preventDefault();
+                          setForm({ ...form, rounds: [...form.rounds, roundInput.trim()] });
+                          setRoundInput("");
+                        }
+                      }}
+                      placeholder="e.g. Aptitude Test"
+                      className="flex-1 px-3 py-2 border border-surface-300 dark:border-surface-600 rounded-xl text-sm bg-white dark:bg-surface-700 text-surface-900 dark:text-surface-100 focus:outline-none focus:ring-2 focus:ring-primary-500"
+                    />
+                    <button type="button"
+                      onClick={() => {
+                        if (roundInput.trim()) {
+                          setForm({ ...form, rounds: [...form.rounds, roundInput.trim()] });
+                          setRoundInput("");
+                        }
+                      }}
+                      className="px-3 py-2 bg-primary-600 text-white text-sm rounded-xl hover:bg-primary-700 transition-colors font-medium">
+                      Add
+                    </button>
+                  </div>
+                  {form.rounds.length > 0 && (
+                    <div className="flex flex-wrap gap-1.5 mt-2">
+                      {form.rounds.map((r, i) => (
+                        <span key={i} className="flex items-center gap-1 px-2.5 py-1 bg-primary-50 dark:bg-primary-900/30 text-primary-700 dark:text-primary-300 text-xs rounded-lg border border-primary-200 dark:border-primary-800">
+                          {r}
+                          <button type="button" onClick={() => setForm({ ...form, rounds: form.rounds.filter((_, j) => j !== i) })}
+                            className="ml-0.5 text-primary-400 hover:text-primary-700 dark:hover:text-primary-200 font-bold leading-none">×</button>
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
               </div>
               <div className="flex gap-3 mt-5">
                 <Button variant="secondary" fullWidth onClick={() => setShowModal(false)}>

@@ -43,6 +43,40 @@ class PlacementDriveService:
         doc["created_at"] = doc["created_at"].isoformat() if isinstance(doc["created_at"], datetime) else doc["created_at"]
         doc["updated_at"] = doc["updated_at"].isoformat() if isinstance(doc["updated_at"], datetime) else doc["updated_at"]
 
+        # Auto-create associated job in jobs collection
+        job_doc = {
+            "title": data.title,
+            "company_id": data.company_id or "",
+            "description": data.description or data.title,
+            "requirements": (
+                f"Min CGPA: {data.min_cgpa}. "
+                f"Branches: {', '.join(data.eligible_branches) if data.eligible_branches else 'All'}"
+            ),
+            "required_skills": [],
+            "job_type": "INTERNSHIP" if data.drive_type == "INTERNSHIP" else "FULL_TIME",
+            "location": data.venue_type or "OFFLINE",
+            "salary_min": None,
+            "salary_max": None,
+            "min_cgpa": data.min_cgpa,
+            "allowed_branches": data.eligible_branches or [],
+            "openings": data.openings,
+            "application_deadline": data.drive_date,
+            "status": "OPEN",
+            "drive_id": drive_id,  # backlink to drive
+            "created_at": now,
+            "updated_at": now,
+        }
+        _, job_ref = await asyncio.to_thread(self.db.collection("jobs").add, job_doc)
+        job_id = job_ref.id
+
+        # Update the drive document with the job_id
+        await asyncio.to_thread(
+            self._col.document(drive_id).update,
+            {"job_id": job_id, "job_ids": [job_id]}
+        )
+        doc["job_id"] = job_id
+        doc["job_ids"] = [job_id]
+
         # Enrich with company name
         if data.company_id:
             doc["company_name"] = await self._get_company_name(data.company_id)

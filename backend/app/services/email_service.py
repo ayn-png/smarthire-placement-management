@@ -449,5 +449,78 @@ def send_password_changed_email(to: str, full_name: str) -> None:
     <a class="btn" href="{settings.APP_BASE_URL}/forgot-password">Reset My Password</a>
     """
     _send(to, "Your SmartHire password was changed", _base_template(
-        "Password Changed 🔒", body
+        "Password Changed \U0001f512", body
+    ))
+
+
+# ── Placement Admin Approval Emails ───────────────────────────────────────────
+
+def send_admin_approval_request_to_owner(
+    owner_email: str,
+    admin_name: str,
+    admin_email: str,
+    approve_url: str = "",
+) -> None:
+    """Notify portal owner that a new placement admin is awaiting approval."""
+    safe_name = _html.escape(admin_name or "")
+    safe_email = _html.escape(admin_email or "")
+    safe_approve_url = approve_url or f"{settings.APP_BASE_URL}/management/admin-requests"
+    body = f"""
+    <p>Hi,</p>
+    <p>A new user has requested <strong>Placement Admin</strong> access on SmartHire:</p>
+    <table style="width:100%;border-collapse:collapse;margin:16px 0;">
+      <tr><td style="padding:8px;font-weight:bold;color:#374151;">Name:</td>
+          <td style="padding:8px;">{safe_name}</td></tr>
+      <tr><td style="padding:8px;font-weight:bold;color:#374151;">Email:</td>
+          <td style="padding:8px;">{safe_email}</td></tr>
+    </table>
+    <p>Click the button below to <strong>verify and approve</strong> this account instantly:</p>
+    <div style="text-align:center;margin:28px 0;">
+      <a href="{safe_approve_url}"
+         style="display:inline-block;background:#6366f1;color:#ffffff;padding:14px 36px;
+                border-radius:8px;text-decoration:none;font-weight:700;font-size:16px;">
+        &#10003; Verify &amp; Approve Account
+      </a>
+    </div>
+    <p style="color:#6b7280;font-size:13px;text-align:center;">
+      Clicking this button will immediately activate the admin account.<br>
+      To reject instead, visit the
+      <a href="{settings.APP_BASE_URL}/management/admin-requests" style="color:#6366f1;">Admin Requests</a> page.
+    </p>
+    """
+    _send(owner_email, f"New Admin Request — {safe_name}", _base_template(
+        "New Admin Approval Request", body
+    ))
+
+
+def send_admin_approved_email(admin_email: str, admin_name: str) -> None:
+    """Tell the placement admin their account has been approved."""
+    safe_name = _html.escape(admin_name or "")
+    body = f"""
+    <p>Hi <strong>{safe_name}</strong>,</p>
+    <p>Great news! Your <strong>Placement Admin</strong> account on SmartHire has been
+    <span style="color:#059669;font-weight:bold;">approved</span> by the portal owner.</p>
+    <p>You can now log in and start managing placements for your institution.</p>
+    <a class="btn" href="{settings.APP_BASE_URL}/login">Login to SmartHire</a>
+    """
+    _send(admin_email, "Your SmartHire Admin Account is Approved!", _base_template(
+        "Account Approved \u2713", body
+    ))
+
+
+def send_admin_rejected_email(
+    admin_email: str, admin_name: str, reason: str
+) -> None:
+    """Tell the placement admin their request was not approved."""
+    safe_name = _html.escape(admin_name or "")
+    safe_reason = _html.escape(reason or "No reason provided.")
+    body = f"""
+    <p>Hi <strong>{safe_name}</strong>,</p>
+    <p>Unfortunately, your Placement Admin account request on SmartHire was
+    <span style="color:#dc2626;font-weight:bold;">not approved</span>.</p>
+    <p><strong>Reason:</strong> {safe_reason}</p>
+    <p>If you believe this is an error, please contact the portal administrator directly.</p>
+    """
+    _send(admin_email, "SmartHire Admin Request — Not Approved", _base_template(
+        "Request Not Approved", body
     ))

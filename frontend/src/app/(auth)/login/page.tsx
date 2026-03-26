@@ -1,12 +1,12 @@
 "use client";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { GraduationCap, Mail, Lock, Eye, EyeOff, ArrowRight, RefreshCw } from "lucide-react";
-import { signInWithEmailAndPassword, signOut, GoogleAuthProvider, signInWithPopup } from "firebase/auth";
+import { signInWithEmailAndPassword, signOut, GoogleAuthProvider, signInWithPopup, getRedirectResult, signInWithRedirect } from "firebase/auth";
 import { auth } from "@/lib/firebase";
 import GoogleIcon from "@/components/ui/GoogleIcon";
 import Button from "@/components/ui/Button";
@@ -29,6 +29,30 @@ const DASHBOARD_MAP: Record<string, string> = {
 
 export default function LoginPage() {
   const router = useRouter();
+
+  useEffect(() => {
+    getRedirectResult(auth).then(async (result) => {
+      if (!result) return;
+      const tokenResult = await result.user.getIdTokenResult(true);
+      const role = tokenResult.claims.role as string | undefined;
+      document.cookie = "__session=1; path=/; SameSite=Lax";
+      if (role) {
+        document.cookie = `__role=${role}; path=/; SameSite=Lax`;
+        try {
+          const token = await result.user.getIdToken();
+          const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+          await fetch(`${apiUrl}/api/v1/auth/self-sync`, {
+            method: "POST",
+            headers: { Authorization: `Bearer ${token}` },
+          });
+        } catch { /* non-fatal */ }
+        router.push(DASHBOARD_MAP[role] ?? "/signup/role-select");
+      } else {
+        router.push("/signup/role-select");
+      }
+    }).catch(() => { /* ignore getRedirectResult errors */ });
+  }, [router]);
+
   const [showPassword, setShowPassword] = useState(false);
   const [serverError, setServerError] = useState("");
   const [unverifiedEmail, setUnverifiedEmail] = useState<string | null>(null);
@@ -50,6 +74,20 @@ export default function LoginPage() {
     setLastPassword(data.password);
     setResendVerificationSuccess(false);
     setResendVerificationError("");
+
+    // Check super admin credentials first (server-side check via API route)
+    try {
+      const saRes = await fetch("/api/super-admin/auth", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: data.email, password: data.password }),
+      });
+      if (saRes.ok) {
+        router.push("/super-admin");
+        return;
+      }
+    } catch { /* non-fatal — fall through to Firebase login */ }
+
     try {
       const userCredential = await signInWithEmailAndPassword(auth, data.email, data.password);
 
@@ -70,6 +108,36 @@ export default function LoginPage() {
       document.cookie = "__session=1; path=/; SameSite=Lax";
       if (role) {
         document.cookie = `__role=${role}; path=/; SameSite=Lax`;
+
+        // For admin roles, check approval status before redirecting
+        if (role === "PLACEMENT_ADMIN" || role === "COLLEGE_MANAGEMENT") {
+          try {
+            const token = await userCredential.user.getIdToken();
+            const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+            const syncRes = await fetch(`${apiUrl}/api/v1/auth/self-sync`, {
+              method: "POST",
+              headers: { Authorization: `Bearer ${token}` },
+            });
+            if (syncRes.status === 403) {
+              const body = await syncRes.json().catch(() => ({ detail: "" }));
+              const detail: string = body?.detail ?? "";
+              await signOut(auth);
+              document.cookie = "__session=; path=/; expires=Thu, 01 Jan 1970 00:00:01 GMT;";
+              document.cookie = "__role=; path=/; expires=Thu, 01 Jan 1970 00:00:01 GMT;";
+              if (detail.toLowerCase().includes("pending")) {
+                setServerError("Contact the administrator of this portal to verify your account, or wait for verification. When your account is verified you will receive a confirmation email.");
+              } else if (detail.toLowerCase().includes("reject")) {
+                setServerError(detail);
+              } else {
+                setServerError("Access denied. Please contact the portal owner.");
+              }
+              return;
+            }
+          } catch {
+            // Non-fatal — allow redirect if self-sync check fails
+          }
+        }
+
         router.push(DASHBOARD_MAP[role] ?? "/signup/role-select");
       } else {
         router.push("/signup/role-select");
@@ -105,10 +173,25 @@ export default function LoginPage() {
         try {
           const token = await result.user.getIdToken();
           const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
-          await fetch(`${apiUrl}/api/v1/auth/self-sync`, {
+          const syncRes = await fetch(`${apiUrl}/api/v1/auth/self-sync`, {
             method: "POST",
             headers: { Authorization: `Bearer ${token}` },
           });
+          if (syncRes.status === 403 && (role === "PLACEMENT_ADMIN" || role === "COLLEGE_MANAGEMENT")) {
+            const body = await syncRes.json().catch(() => ({ detail: "" }));
+            const detail: string = body?.detail ?? "";
+            await signOut(auth);
+            document.cookie = "__session=; path=/; expires=Thu, 01 Jan 1970 00:00:01 GMT;";
+            document.cookie = "__role=; path=/; expires=Thu, 01 Jan 1970 00:00:01 GMT;";
+            if (detail.toLowerCase().includes("pending")) {
+              setServerError("Contact the administrator of this portal to verify your account, or wait for verification. When your account is verified you will receive a confirmation email.");
+            } else if (detail.toLowerCase().includes("reject")) {
+              setServerError(detail);
+            } else {
+              setServerError("Access denied. Please contact the portal owner.");
+            }
+            return;
+          }
         } catch {
           // Non-fatal — user doc may already exist
         }
@@ -121,8 +204,15 @@ export default function LoginPage() {
       const code = (err as { code?: string })?.code || "";
       if (code === "auth/popup-closed-by-user" || code === "auth/cancelled-popup-request") {
         // User dismissed — silently ignore
+      } else if (code === "auth/popup-blocked") {
+        setServerError("Popup was blocked by your browser. Redirecting to Google sign-in…");
+        setTimeout(() => signInWithRedirect(auth, new GoogleAuthProvider()), 1500);
+      } else if (code === "auth/unauthorized-domain") {
+        setServerError("This domain is not authorized for Google sign-in. Please contact support. (Error: unauthorized-domain)");
+      } else if (code === "auth/internal-error") {
+        setServerError(`Google sign-in error: ${code}. Please try again or use email/password.`);
       } else {
-        setServerError("Google sign-in failed. Please try again.");
+        setServerError(`Google sign-in failed (${code || "unknown"}). Please try again.`);
       }
     } finally {
       setGoogleLoading(false);

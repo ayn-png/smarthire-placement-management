@@ -55,6 +55,14 @@ class Settings(BaseSettings):
     # Internal secret for Next.js → FastAPI server-to-server calls
     INTERNAL_API_SECRET: str = "change-this-internal-secret"
 
+    # Super Admin credentials and secret (for portal owner dashboard)
+    SUPER_ADMIN_EMAIL: str = ""
+    SUPER_ADMIN_PASSWORD: str = ""
+    SUPER_ADMIN_SECRET: str = "change-this-super-admin-secret"
+
+    # Portal owner email — receives placement admin approval requests (hardcoded to portal owner)
+    OWNER_EMAIL: str = "worckbeard@gmail.com"
+
     # Notification limits
     NOTIFICATION_BATCH_LIMIT: int = 500   # Max students notified per new job posting
     NOTIFY_NEW_JOBS_EMAIL: bool = False   # Set True to also send email on new job

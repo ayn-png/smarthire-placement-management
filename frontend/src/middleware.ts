@@ -26,6 +26,15 @@ export default function middleware(request: NextRequest) {
   const roleCookie = request.cookies.get("__role")?.value;
   const isLoggedIn = !!session;
 
+  // Super admin route protection
+  if (pathname.startsWith("/super-admin")) {
+    const saSession = request.cookies.get("__sa_session")?.value;
+    if (!saSession) {
+      return NextResponse.redirect(new URL("/login", request.url));
+    }
+    return NextResponse.next();
+  }
+
   const isProtected = ["/student", "/admin", "/management"].some((p) =>
     pathname.startsWith(p)
   );

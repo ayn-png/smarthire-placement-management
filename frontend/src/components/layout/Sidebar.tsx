@@ -7,39 +7,38 @@ import { signOut } from "firebase/auth";
 import { auth } from "@/lib/firebase";
 import { motion, AnimatePresence } from "framer-motion";
 import {
-  LayoutDashboard, User, FileText, Briefcase, ClipboardList,
-  Brain, Building2, BarChart3, LogOut, GraduationCap,
+  LayoutDashboard, User, FileText, ClipboardList,
+  Building2, BarChart3, LogOut, GraduationCap,
   PieChart, TrendingUp, ChevronLeft, ChevronRight, X, Users,
   Globe, CalendarDays, Calendar,
+  Settings2, UserCheck,
 } from "lucide-react";
 
 const STUDENT_NAV = [
   { href: "/student/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/student/profile", label: "My Profile", icon: User },
   { href: "/student/resume", label: "Resume", icon: FileText },
-  { href: "/student/jobs", label: "Job Listings", icon: Briefcase },
+  { href: "/student/placement-drives", label: "Drives", icon: CalendarDays },
   { href: "/student/applications", label: "My Applications", icon: ClipboardList },
   { href: "/student/interviews", label: "Interviews", icon: Calendar },
-  { href: "/student/placement-drives", label: "Drives", icon: CalendarDays },
-  { href: "/student/interview", label: "AI Interview Prep", icon: Brain },
   { href: "/student/market-jobs", label: "Market Jobs", icon: Globe },
 ];
 
 const ADMIN_NAV = [
-  { href: "/admin/dashboard", label: "Dashboard", icon: LayoutDashboard },
-  { href: "/admin/students", label: "Students", icon: Users },
-  { href: "/admin/companies", label: "Companies", icon: Building2 },
-  { href: "/admin/jobs", label: "Jobs", icon: Briefcase },
-  { href: "/admin/applications", label: "Applications", icon: ClipboardList },
-  { href: "/admin/placement-drives", label: "Placement Drives", icon: CalendarDays },
-  { href: "/admin/reports", label: "Reports", icon: BarChart3 },
+  { href: "/admin/dashboard",        label: "Dashboard",           icon: LayoutDashboard },
+  { href: "/admin/students",         label: "Students",            icon: Users },
+  { href: "/admin/companies",        label: "Companies",           icon: Building2 },
+  { href: "/admin/placement-drives", label: "Placement Drives",    icon: CalendarDays },
+  { href: "/admin/reports",          label: "Reports",             icon: BarChart3 },
+  { href: "/admin/settings",         label: "Settings",            icon: Settings2 },
 ];
 
 const MANAGEMENT_NAV = [
-  { href: "/management/dashboard", label: "Dashboard", icon: LayoutDashboard },
-  { href: "/management/analytics", label: "Analytics", icon: PieChart },
-  { href: "/management/statistics", label: "Statistics", icon: TrendingUp },
-  { href: "/management/reports", label: "Reports", icon: BarChart3 },
+  { href: "/management/dashboard",      label: "Dashboard",      icon: LayoutDashboard },
+  { href: "/management/analytics",      label: "Analytics",      icon: PieChart },
+  { href: "/management/statistics",     label: "Statistics",     icon: TrendingUp },
+  { href: "/management/reports",        label: "Reports",        icon: BarChart3 },
+  { href: "/management/admin-requests", label: "Admin Requests", icon: UserCheck },
 ];
 
 interface SidebarProps {

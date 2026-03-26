@@ -75,7 +75,9 @@ export async function POST(request: NextRequest) {
   // 1. Set Firebase custom claim so the role is in the ID token
   try {
     const fbAuth = await getAdminAuth();
-    await fbAuth.setCustomUserClaims(uid, { role });
+    // For admin roles, set claim to STUDENT until approved by super admin
+    const claimRole = (role === "PLACEMENT_ADMIN" || role === "COLLEGE_MANAGEMENT") ? "STUDENT" : role;
+    await fbAuth.setCustomUserClaims(uid, { role: claimRole });
   } catch (err) {
     console.error("[set-role] Failed to set custom claim:", err);
     return NextResponse.json({ error: "Failed to set role" }, { status: 500 });
