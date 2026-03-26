@@ -229,6 +229,13 @@ class StudentService:
 
         all_profiles = [_doc_to_dict(d) for d in docs if d.exists]
 
+        # Filter out stub profiles (created by avatar/marksheet uploads before profile completion)
+        # A complete profile must have both full_name and roll_number set
+        all_profiles = [
+            p for p in all_profiles
+            if p and p.get("full_name") and p.get("roll_number")
+        ]
+
         # Python-side filters for CGPA and skills (Firestore range queries need composite indexes)
         if min_cgpa is not None:
             all_profiles = [p for p in all_profiles if (p.get("cgpa") or 0) >= min_cgpa]

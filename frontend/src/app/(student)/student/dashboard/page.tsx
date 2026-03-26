@@ -10,7 +10,7 @@ import { formatDate, getStatusColor } from "@/lib/utils";
 import LoadingSpinner from "@/components/ui/LoadingSpinner";
 import Link from "next/link";
 import Badge from "@/components/ui/Badge";
-import { getUserName } from "@/lib/auth";
+import { useAuth } from "@/contexts/AuthContext";
 import { FadeIn } from "@/components/ui/Animations";
 
 export default function StudentDashboard() {
@@ -18,7 +18,7 @@ export default function StudentDashboard() {
   const [applications, setApplications] = useState<Application[]>([]);
   const [recentJobs, setRecentJobs] = useState<Job[]>([]);
   const [loading, setLoading] = useState(true);
-  const name = getUserName();
+  const { user } = useAuth();
 
   useEffect(() => {
     async function load() {
@@ -57,7 +57,7 @@ export default function StudentDashboard() {
               <Sparkles className="w-5 h-5 text-primary-200" />
               <span className="text-primary-200 text-sm font-medium">Student Dashboard</span>
             </div>
-            <h1 className="text-2xl md:text-3xl font-bold">Welcome back, {name?.split(" ")[0]}! 👋</h1>
+            <h1 className="text-2xl md:text-3xl font-bold">Welcome back, {(profile?.full_name || user?.displayName || user?.email?.split("@")[0] || "Student").split(" ")[0]}! 👋</h1>
             <p className="text-primary-100 mt-1">Here&apos;s your placement activity overview</p>
           </div>
         </div>

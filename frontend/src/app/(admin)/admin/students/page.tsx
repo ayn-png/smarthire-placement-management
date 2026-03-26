@@ -27,9 +27,11 @@ export default function AdminStudentsPage() {
   const [filterBranch, setFilterBranch] = useState("");
   const [minCgpa, setMinCgpa] = useState("");
   const [exporting, setExporting] = useState(false);
+  const [error, setError] = useState<string>("");
 
   const load = useCallback(async () => {
     setLoading(true);
+    setError("");
     try {
       const data = await studentService.listStudents({
         branch: filterBranch || undefined,
@@ -43,7 +45,7 @@ export default function AdminStudentsPage() {
         const q = search.toLowerCase();
         const filtered = raw.filter(
           (s) =>
-            s.full_name.toLowerCase().includes(q) ||
+            (s.full_name ?? "").toLowerCase().includes(q) ||
             s.email.toLowerCase().includes(q) ||
             s.roll_number.toLowerCase().includes(q)
         );
@@ -53,7 +55,12 @@ export default function AdminStudentsPage() {
         setStudents(raw);
         setTotal(data.total || raw.length);
       }
-    } catch {
+    } catch (err: unknown) {
+      const msg = (err as { response?: { data?: { detail?: string } }; message?: string })?.response?.data?.detail
+        || (err as { message?: string })?.message
+        || "Failed to load students";
+      setError(msg);
+      console.error("[AdminStudents] load error:", err);
       setStudents([]);
       setTotal(0);
     } finally {
@@ -158,6 +165,16 @@ export default function AdminStudentsPage() {
         </div>
       </FadeIn>
 
+      {error && (
+        <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl p-4 text-red-700 dark:text-red-400 text-sm">
+          <p className="font-medium">Failed to load students</p>
+          <p className="mt-1 text-red-600 dark:text-red-500">{error}</p>
+          <p className="mt-2 text-xs text-red-500 dark:text-red-600">
+            Tip: Check that NEXT_PUBLIC_API_URL is set to your backend URL in production.
+          </p>
+        </div>
+      )}
+
       {loading ? (
         <LoadingSpinner className="h-64" size="lg" />
       ) : students.length === 0 ? (
@@ -182,17 +199,17 @@ export default function AdminStudentsPage() {
                       {(s as StudentProfile & { avatar_url?: string }).avatar_url ? (
                         <img
                           src={(s as StudentProfile & { avatar_url?: string }).avatar_url}
-                          alt={s.full_name}
+                          alt={s.full_name ?? "Student"}
                           className="w-11 h-11 rounded-full object-cover"
                         />
                       ) : (
-                        <span className="text-white font-bold text-sm">{s.full_name.charAt(0).toUpperCase()}</span>
+                        <span className="text-white font-bold text-sm">{s.full_name?.charAt(0)?.toUpperCase() ?? "?"}</span>
                       )}
                     </div>
 
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 flex-wrap">
-                        <p className="font-semibold text-surface-900 dark:text-white truncate">{s.full_name}</p>
+                        <p className="font-semibold text-surface-900 dark:text-white truncate">{s.full_name ?? "Unknown"}</p>
                         <span className="text-xs px-2 py-0.5 rounded-full bg-surface-100 dark:bg-surface-700 text-surface-500 dark:text-surface-400 font-medium">{s.roll_number}</span>
                         <span className="text-xs px-2 py-0.5 rounded-full bg-primary-50 dark:bg-primary-900/30 text-primary-700 dark:text-primary-400 font-medium">{s.branch}</span>
                       </div>
@@ -216,7 +233,7 @@ export default function AdminStudentsPage() {
                     <div className="flex flex-col items-end gap-1 flex-shrink-0">
                       <div className="flex items-center gap-1">
                         <Star className="w-3.5 h-3.5 text-amber-400 fill-amber-400" />
-                        <span className="text-sm font-bold text-surface-800 dark:text-surface-200">{s.cgpa.toFixed(2)}</span>
+                        <span className="text-sm font-bold text-surface-800 dark:text-surface-200">{s.cgpa?.toFixed(2) ?? "N/A"}</span>
                       </div>
                       <p className="text-xs text-surface-400 dark:text-surface-500">Sem {s.semester}</p>
                       {s.resume_url && (

@@ -27,6 +27,10 @@ export const authService = {
   resetPasswordWithToken: (data: { token: string; new_password: string }) =>
     api.post<{ message: string }>("/auth/reset-password-confirm", data).then((r) => r.data),
 
+  getAdminRequests: (status?: string) => api.get("/api/v1/auth/admin-requests", { params: status ? { status } : {} }),
+  approveAdmin: (userId: string) => api.patch(`/api/v1/auth/admin-requests/${userId}/approve`),
+  rejectAdmin: (userId: string, reason: string) => api.patch(`/api/v1/auth/admin-requests/${userId}/reject`, { reason }),
+
   // Admin user management
   listUsers: (params?: { role?: string; is_active?: boolean; page?: number; limit?: number }) =>
     api.get<{ users: Array<{ id: string; email: string; full_name: string; role: string; is_active: boolean; created_at: string }>; total: number; page: number; limit: number }>(
@@ -108,6 +112,33 @@ export const studentService = {
   // Feature 3 — Mark student as placed (admin)
   markPlaced: (studentId: string, data: { is_placed: boolean; placed_company?: string; placed_package?: number }) =>
     api.patch<{ message: string }>(`/students/${studentId}/placed-status`, data).then((r) => r.data),
+
+  uploadMarksheet10th: async (file: File) => {
+    const form = new FormData();
+    form.append("file", file);
+    const { data } = await api.post("/students/marksheet-10th", form, {
+      headers: { "Content-Type": "multipart/form-data" },
+    });
+    return data;
+  },
+
+  uploadMarksheet12th: async (file: File) => {
+    const form = new FormData();
+    form.append("file", file);
+    const { data } = await api.post("/students/marksheet-12th", form, {
+      headers: { "Content-Type": "multipart/form-data" },
+    });
+    return data;
+  },
+
+  uploadAadharDoc: async (file: File) => {
+    const form = new FormData();
+    form.append("file", file);
+    const { data } = await api.post("/students/aadhar-doc", form, {
+      headers: { "Content-Type": "multipart/form-data" },
+    });
+    return data;
+  },
 };
 
 // ---- COMPANIES ----
@@ -265,6 +296,18 @@ export const placementDriveService = {
     api.delete(`/placement-drives/${driveId}`),
 };
 
+// ---- DRIVE ROUNDS ----
+export const driveRoundsService = {
+  list: (driveId: string) =>
+    api.get<any[]>(`/placement-drives/${driveId}/rounds`).then((r) => r.data),
+  create: (driveId: string, data: { round_number: number; round_name: string; round_type: string }) =>
+    api.post(`/placement-drives/${driveId}/rounds`, data).then((r) => r.data),
+  update: (driveId: string, roundId: string, data: any) =>
+    api.put(`/placement-drives/${driveId}/rounds/${roundId}`, data).then((r) => r.data),
+  delete: (driveId: string, roundId: string) =>
+    api.delete(`/placement-drives/${driveId}/rounds/${roundId}`),
+};
+
 // Feature 6: Interview schedule + Google Calendar
 export const calendarService = {
   getMyInterviews: () =>
@@ -304,4 +347,46 @@ export const marketJobsService = {
         total_clicks: number;
       }>("/market-jobs/stats")
       .then((r) => r.data),
+};
+
+// ---- ROUNDS ----
+export const roundService = {
+  list: (params?: { application_id?: string; job_id?: string }) =>
+    api.get("/api/v1/rounds/", { params }),
+  create: (data: any) => api.post("/api/v1/rounds/", data),
+  updateResult: (roundId: string, data: { result: string; admin_notes?: string }) =>
+    api.patch(`/api/v1/rounds/${roundId}/result`, data),
+  update: (roundId: string, data: any) => api.put(`/api/v1/rounds/${roundId}`, data),
+  delete: (roundId: string) => api.delete(`/api/v1/rounds/${roundId}`),
+  getMyUpcoming: () => api.get("/api/v1/rounds/my/upcoming"),
+};
+
+// ---- SETTINGS ----
+export const settingsService = {
+  get: () => api.get("/api/v1/settings/"),
+  update: (data: any) => api.patch("/api/v1/settings/", data),
+};
+
+// ---- ADMIN PROFILE ----
+export const adminProfileService = {
+  get: () => api.get("/api/v1/admin-profile/me"),
+  create: (data: any) => api.post("/api/v1/admin-profile/", data),
+  update: (data: any) => api.put("/api/v1/admin-profile/me", data),
+  uploadAvatar: (file: File) => {
+    const fd = new FormData();
+    fd.append("file", file);
+    return api.post("/api/v1/admin-profile/avatar", fd, {
+      headers: { "Content-Type": "multipart/form-data" },
+    });
+  },
+};
+
+// ---- VERIFICATION ----
+export const verificationService = {
+  submit: (doc_url: string) => api.post("/api/v1/verification/submit", { doc_url }),
+  getMyStatus: () => api.get("/api/v1/verification/my-status"),
+  listPending: (params?: any) => api.get("/api/v1/verification/pending", { params }),
+  listAll: (status?: string) => api.get("/api/v1/verification/all", { params: status ? { status } : {} }),
+  review: (studentId: string, data: { status: string; admin_notes?: string }) =>
+    api.patch(`/api/v1/verification/${studentId}/review`, data),
 };

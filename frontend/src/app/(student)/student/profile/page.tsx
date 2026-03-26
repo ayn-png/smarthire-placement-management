@@ -9,6 +9,7 @@ import Card from "@/components/ui/Card";
 import Input from "@/components/ui/Input";
 import Button from "@/components/ui/Button";
 import { studentService, authService } from "@/services/api";
+import api from "@/lib/axios";
 import { StudentProfile } from "@/types";
 import { getFileUrl, extractErrorMsg } from "@/lib/utils";
 import LoadingSpinner from "@/components/ui/LoadingSpinner";
@@ -17,13 +18,25 @@ import BranchSelect, { BranchValue, BRANCH_OPTIONS } from "@/components/ui/Branc
 
 const schema = z.object({
   full_name: z.string().min(2, "Full name must be at least 2 characters").regex(/^[A-Za-z\s]+$/, "Name must contain only letters and spaces"),
-  roll_number: z.string().min(3, "Roll number must be at least 3 characters").max(30, "Roll number too long").regex(/^[A-Za-z0-9\-/]+$/, "Roll number can only contain letters, digits, hyphens, and slashes"),
+  roll_number: z.string()
+    .min(1, "Roll number is required")
+    .regex(/^\d{9}$/, "Roll number must be exactly 9 digits (numbers only)"),
   branch: z.string().min(1, "Branch required"),
   semester: z.number({ coerce: true }).int().min(1).max(10),
   cgpa: z.number({ coerce: true }).min(0).max(10),
   sgpa: z.number({ coerce: true }).min(0).max(10).optional().or(z.literal("")).transform((v) => v === "" ? undefined : v),
   phone: z.string().regex(/^[0-9]{10}$/, "Phone must be exactly 10 digits"),
-  date_of_birth: z.string().optional(),
+  date_of_birth: z.string().refine((v) => {
+    if (!v) return true;
+    const dob = new Date(v);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    if (dob >= today) return false; // cannot be today or future
+    // Check age >= 18
+    const age = today.getFullYear() - dob.getFullYear()
+      - ((today.getMonth() < dob.getMonth() || (today.getMonth() === dob.getMonth() && today.getDate() < dob.getDate())) ? 1 : 0);
+    return age >= 18;
+  }, { message: "You must be at least 18 years old" }).optional().or(z.literal("")),
   address: z.string().max(500, "Address must be 500 characters or less").optional(),
   // B-18: LinkedIn must start with https://linkedin.com/ or https://www.linkedin.com/
   linkedin_url: z.string()
@@ -45,6 +58,11 @@ const schema = z.object({
   about: z.string().max(1000, "Bio must be 1000 characters or less").optional(),
   skills: z.string().optional(),
   certifications: z.string().optional(),
+  marks_10th: z.number().min(0).max(100).optional().or(z.nan().transform(() => undefined)),
+  board_10th: z.string().max(100).optional(),
+  marks_12th: z.number().min(0).max(100).optional().or(z.nan().transform(() => undefined)),
+  board_12th: z.string().max(100).optional(),
+  aadhar_last4: z.string().regex(/^\d{4}$/, "Must be exactly 4 digits").optional().or(z.literal("")),
 });
 
 type FormData = z.infer<typeof schema>;
@@ -363,9 +381,11 @@ function useCountdown(seconds: number, active: boolean) {
 export default function ProfilePage() {
   const [profile, setProfile] = useState<StudentProfile | null>(null);
   const [loading, setLoading] = useState(true);
+  const [isEditing, setIsEditing] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [marksheetUrl, setMarksheetUrl] = useState<string | null>(null);
   const [extractedFields, setExtractedFields] = useState<string[] | undefined>(undefined);
+  const [verificationStatus, setVerificationStatus] = useState<string | null>(null);
 
   // ── Password change state ───────────────────────────────────────────────
   const [pwOpen, setPwOpen] = useState(false);
@@ -409,7 +429,18 @@ export default function ProfilePage() {
           sgpa: p.sgpa ?? undefined,
           skills: p.skills?.join(", ") || "",
           certifications: p.certifications?.join(", ") || "",
+          marks_10th: p.marks_10th ?? undefined,
+          board_10th: p.board_10th ?? "",
+          marks_12th: p.marks_12th ?? undefined,
+          board_12th: p.board_12th ?? "",
+          aadhar_last4: p.aadhar_last4 ?? "",
         });
+      })
+      .then(async () => {
+        try {
+          const vRes = await api.get("/api/v1/verification/my-status");
+          setVerificationStatus(vRes.data?.status ?? null);
+        } catch { /* not verified yet */ }
       })
       .catch(() => {})
       .finally(() => setLoading(false));
@@ -459,6 +490,7 @@ export default function ProfilePage() {
         setProfile(created);
       }
       setSaveSuccess(true);
+      setIsEditing(false);
       setTimeout(() => setSaveSuccess(false), 3000);
     } catch (err: unknown) {
       alert(extractErrorMsg(err, "Failed to save profile"));
@@ -588,7 +620,27 @@ export default function ProfilePage() {
         </Card>
       </FadeIn>
 
-      <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
+      {/* Edit Profile toggle — shown only when profile exists and not editing */}
+      {profile && !isEditing && (
+        <FadeIn delay={0.1}>
+          <div className="flex justify-end">
+            <Button
+              type="button"
+              variant="secondary"
+              size="md"
+              onClick={() => setIsEditing(true)}
+            >
+              Edit Profile
+            </Button>
+          </div>
+        </FadeIn>
+      )}
+
+      <form
+        onSubmit={handleSubmit(onSubmit)}
+        className="space-y-6"
+        style={{ display: profile && !isEditing ? "none" : undefined }}
+      >
         <StaggerContainer className="space-y-6">
 
           {/* Personal Info */}
@@ -627,7 +679,14 @@ export default function ProfilePage() {
           <StaggerItem>
             <Card title="Academic Information">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <Input {...register("roll_number")} label="Roll Number *" placeholder="2021CS001" error={errors.roll_number?.message} />
+                <Input
+                  {...register("roll_number")}
+                  label="Roll Number *"
+                  placeholder="123456789"
+                  error={errors.roll_number?.message}
+                  readOnly={!!profile}
+                  className={!!profile ? "bg-surface-50 dark:bg-surface-900 cursor-not-allowed opacity-70" : ""}
+                />
                 <Controller
                   name="branch"
                   control={control}
@@ -652,6 +711,64 @@ export default function ProfilePage() {
                   placeholder="Auto-filled from marksheet"
                   error={errors.sgpa?.message}
                 />
+              </div>
+
+              <div className="pt-4 border-t border-surface-200 dark:border-surface-700 space-y-4">
+                {/* 10th Standard */}
+                <div>
+                  <h4 className="text-xs font-semibold text-surface-500 dark:text-surface-400 uppercase tracking-wider mb-3">10th Standard</h4>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-surface-700 dark:text-surface-300 mb-1">Percentage / CGPA</label>
+                      <input
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        max="100"
+                        placeholder="e.g. 85.5"
+                        {...register("marks_10th", { valueAsNumber: true })}
+                        className="w-full px-3 py-2 border border-surface-300 dark:border-surface-600 rounded-lg text-sm bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 focus:outline-none focus:ring-2 focus:ring-primary-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-surface-700 dark:text-surface-300 mb-1">Board</label>
+                      <input
+                        type="text"
+                        placeholder="e.g. CBSE, ICSE, State Board"
+                        {...register("board_10th")}
+                        className="w-full px-3 py-2 border border-surface-300 dark:border-surface-600 rounded-lg text-sm bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 focus:outline-none focus:ring-2 focus:ring-primary-500"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* 12th Standard */}
+                <div>
+                  <h4 className="text-xs font-semibold text-surface-500 dark:text-surface-400 uppercase tracking-wider mb-3">12th Standard</h4>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-surface-700 dark:text-surface-300 mb-1">Percentage / CGPA</label>
+                      <input
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        max="100"
+                        placeholder="e.g. 78.0"
+                        {...register("marks_12th", { valueAsNumber: true })}
+                        className="w-full px-3 py-2 border border-surface-300 dark:border-surface-600 rounded-lg text-sm bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 focus:outline-none focus:ring-2 focus:ring-primary-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-surface-700 dark:text-surface-300 mb-1">Board</label>
+                      <input
+                        type="text"
+                        placeholder="e.g. CBSE, ICSE, State Board"
+                        {...register("board_12th")}
+                        className="w-full px-3 py-2 border border-surface-300 dark:border-surface-600 rounded-lg text-sm bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 focus:outline-none focus:ring-2 focus:ring-primary-500"
+                      />
+                    </div>
+                  </div>
+                </div>
               </div>
             </Card>
           </StaggerItem>
@@ -680,16 +797,68 @@ export default function ProfilePage() {
 
           <StaggerItem>
             <Card title="Social Links">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <Input {...register("linkedin_url")} label="LinkedIn URL" placeholder="https://linkedin.com/in/username" error={errors.linkedin_url?.message} />
-                <Input {...register("github_url")} label="GitHub URL" placeholder="https://github.com/username" error={errors.github_url?.message} />
+              <div className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <Input {...register("linkedin_url")} label="LinkedIn URL" placeholder="https://linkedin.com/in/username" error={errors.linkedin_url?.message} />
+                  <Input {...register("github_url")} label="GitHub URL" placeholder="https://github.com/username" error={errors.github_url?.message} />
+                </div>
+
+                {/* Identity Verification — Aadhar */}
+                <div className="pt-4 border-t border-surface-200 dark:border-surface-700">
+                  <h4 className="text-xs font-semibold text-surface-500 dark:text-surface-400 uppercase tracking-wider mb-3">Identity Verification</h4>
+                  <div>
+                    <label className="block text-sm font-medium text-surface-700 dark:text-surface-300 mb-1">
+                      Aadhar Last 4 Digits
+                    </label>
+                    <input
+                      type="text"
+                      maxLength={4}
+                      placeholder="e.g. 1234"
+                      {...register("aadhar_last4")}
+                      className="w-32 px-3 py-2 border border-surface-300 dark:border-surface-600 rounded-lg text-sm bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 focus:outline-none focus:ring-2 focus:ring-primary-500 tracking-widest font-mono"
+                    />
+                    {errors.aadhar_last4 && <p className="text-red-500 text-xs mt-1">{errors.aadhar_last4.message}</p>}
+                    <p className="text-xs text-surface-400 dark:text-surface-500 mt-1">
+                      Only the last 4 digits are stored. Upload your Aadhar document in the Resume section for full verification.
+                    </p>
+                  </div>
+
+                  {/* Verification Status */}
+                  {verificationStatus && (
+                    <div className={`mt-3 inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium ${
+                      verificationStatus === "VERIFIED"
+                        ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30"
+                        : verificationStatus === "PENDING"
+                        ? "bg-amber-500/20 text-amber-400 border border-amber-500/30"
+                        : "bg-red-500/20 text-red-400 border border-red-500/30"
+                    }`}>
+                      {verificationStatus === "VERIFIED" ? "✓ Identity Verified"
+                        : verificationStatus === "PENDING" ? "⏳ Verification Pending"
+                        : "✗ Verification Rejected"}
+                    </div>
+                  )}
+                  {!verificationStatus && profile?.aadhar_doc_url && (
+                    <p className="mt-2 text-xs text-white/40">Upload complete — submit for identity verification from the verification portal</p>
+                  )}
+                </div>
               </div>
             </Card>
           </StaggerItem>
         </StaggerContainer>
 
         <FadeIn delay={0.5}>
-          <div className="flex justify-end">
+          <div className="flex justify-end gap-3">
+            {profile && isEditing && (
+              <Button
+                type="button"
+                variant="secondary"
+                size="lg"
+                onClick={() => setIsEditing(false)}
+                disabled={isSubmitting}
+              >
+                Cancel
+              </Button>
+            )}
             <Button type="submit" loading={isSubmitting} size="lg" variant="gradient">
               <Save className="w-4 h-4" />
               {profile ? "Save Changes" : "Create Profile"}

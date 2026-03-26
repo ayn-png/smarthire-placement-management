@@ -3,18 +3,20 @@ from fastapi.responses import StreamingResponse
 from typing import Optional, List
 import csv
 import io
+import asyncio
 import logging
 from app.schemas.student import (
     StudentProfileCreate, StudentProfileUpdate, StudentProfileResponse,
     ResumeUploadResponse, AvatarUploadResponse, MarksheetUploadResponse,
-    OfferLetterUploadResponse, PlacedStatusUpdate,
+    OfferLetterUploadResponse, PlacedStatusUpdate, AadharDocUploadResponse,
 )
 
 logger = logging.getLogger(__name__)
 from app.services.student_service import StudentService
 from app.middleware.auth import get_current_user, require_student, require_admin
-from app.utils.file_upload import save_resume, save_avatar, save_marksheet
+from app.utils.file_upload import save_resume, save_avatar, save_marksheet, save_marksheet_10th, save_marksheet_12th, save_aadhar_doc
 from app.db.database import get_database
+from app.db.helpers import utcnow
 
 router = APIRouter(prefix="/students", tags=["Students"])
 
@@ -128,6 +130,56 @@ async def list_students(
     return await service.list_students(branch, min_cgpa, max_cgpa, skills, page, limit)
 
 
+@router.get("/documents", response_model=list)
+async def get_student_documents(
+    has_resume: Optional[bool] = Query(None),
+    has_offer_letter: Optional[bool] = Query(None),
+    has_aadhar: Optional[bool] = Query(None),
+    current_user: dict = Depends(require_admin),
+    service: StudentService = Depends(get_student_service),
+):
+    """Admin: Get all students with their document upload status."""
+    result = await service.list_students(page=1, limit=10000)
+    students = result["profiles"]
+
+    docs_list = []
+    for s in students:
+        # Also fetch verification status
+        doc_entry = {
+            "student_id": s.id,
+            "student_name": s.full_name,
+            "roll_number": s.roll_number,
+            "email": s.email,
+            "resume_url": s.resume_url,
+            "marksheet_url": s.marksheet_url,
+            "marksheet_10th_url": getattr(s, "marksheet_10th_url", None),
+            "marksheet_12th_url": getattr(s, "marksheet_12th_url", None),
+            "offer_letter_url": getattr(s, "offer_letter_url", None),
+            "aadhar_doc_url": getattr(s, "aadhar_doc_url", None),
+        }
+
+        # Apply filters
+        if has_resume is not None:
+            if has_resume and not doc_entry["resume_url"]:
+                continue
+            if not has_resume and doc_entry["resume_url"]:
+                continue
+        if has_offer_letter is not None:
+            if has_offer_letter and not doc_entry["offer_letter_url"]:
+                continue
+            if not has_offer_letter and doc_entry["offer_letter_url"]:
+                continue
+        if has_aadhar is not None:
+            if has_aadhar and not doc_entry["aadhar_doc_url"]:
+                continue
+            if not has_aadhar and doc_entry["aadhar_doc_url"]:
+                continue
+
+        docs_list.append(doc_entry)
+
+    return docs_list
+
+
 @router.get("/export-csv")
 async def export_students_csv(
     branch: Optional[str] = Query(None),
@@ -206,6 +258,67 @@ async def upload_offer_letter(
         offer_letter_url=offer_url,
         message="Offer letter uploaded successfully",
     )
+
+
+@router.post("/marksheet-10th")
+async def upload_marksheet_10th(
+    file: UploadFile = File(...),
+    current_user: dict = Depends(require_student),
+    service: StudentService = Depends(get_student_service),
+):
+    """Upload 10th standard marksheet."""
+    url = await save_marksheet_10th(file, current_user["id"])
+    try:
+        await asyncio.to_thread(
+            service.db.collection("student_profiles").document(current_user["id"]).set,
+            {"marksheet_10th_url": url, "updated_at": utcnow()},
+            merge=True,
+        )
+    except Exception:
+        pass
+    return {"marksheet_10th_url": url, "message": "10th marksheet uploaded successfully"}
+
+
+@router.post("/marksheet-12th")
+async def upload_marksheet_12th(
+    file: UploadFile = File(...),
+    current_user: dict = Depends(require_student),
+    service: StudentService = Depends(get_student_service),
+):
+    """Upload 12th standard marksheet."""
+    url = await save_marksheet_12th(file, current_user["id"])
+    try:
+        await asyncio.to_thread(
+            service.db.collection("student_profiles").document(current_user["id"]).set,
+            {"marksheet_12th_url": url, "updated_at": utcnow()},
+            merge=True,
+        )
+    except Exception:
+        pass
+    return {"marksheet_12th_url": url, "message": "12th marksheet uploaded successfully"}
+
+
+@router.post("/aadhar-doc", response_model=AadharDocUploadResponse)
+async def upload_aadhar_doc(
+    file: UploadFile = File(...),
+    current_user: dict = Depends(require_student),
+    service: StudentService = Depends(get_student_service),
+):
+    """Upload Aadhar/Govt ID document for identity verification."""
+    from fastapi import HTTPException
+    # Guard: profile must exist
+    doc = await asyncio.to_thread(
+        service.db.collection("student_profiles").document(current_user["id"]).get
+    )
+    if not doc.exists or not doc.to_dict().get("full_name"):
+        raise HTTPException(status_code=422, detail="Please complete your student profile before uploading documents.")
+
+    url = await save_aadhar_doc(file, current_user["id"])
+    await asyncio.to_thread(
+        service.db.collection("student_profiles").document(current_user["id"]).update,
+        {"aadhar_doc_url": url, "updated_at": utcnow()},
+    )
+    return AadharDocUploadResponse(aadhar_doc_url=url, message="Aadhar document uploaded successfully")
 
 
 # Feature 3 — Admin marks student as placed

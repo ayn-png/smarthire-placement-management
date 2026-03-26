@@ -24,6 +24,14 @@ class StudentProfileCreate(BaseModel):
     about: Optional[str] = Field(default=None, max_length=1000)
     sgpa: Optional[float] = None
     marksheet_url: Optional[str] = None
+    marks_10th: Optional[float] = Field(default=None, ge=0, le=100)
+    board_10th: Optional[str] = Field(default=None, max_length=100)
+    marksheet_10th_url: Optional[str] = None
+    marks_12th: Optional[float] = Field(default=None, ge=0, le=100)
+    board_12th: Optional[str] = Field(default=None, max_length=100)
+    marksheet_12th_url: Optional[str] = None
+    aadhar_last4: Optional[str] = Field(default=None, pattern=r"^\d{4}$")
+    aadhar_doc_url: Optional[str] = None
 
     @field_validator("cgpa")
     @classmethod
@@ -68,8 +76,8 @@ class StudentProfileCreate(BaseModel):
     @classmethod
     def validate_roll_number(cls, v):
         v = v.strip()
-        if not re.match(r'^[A-Za-z0-9\-/]{3,30}$', v):
-            raise ValueError("Roll number must be 3–30 characters (letters, digits, hyphens, slashes only)")
+        if not re.match(r'^\d{9}$', v):
+            raise ValueError("Roll number must be exactly 9 digits (numbers only)")
         return v
 
     @field_validator("linkedin_url")
@@ -95,18 +103,22 @@ class StudentProfileCreate(BaseModel):
     @field_validator("date_of_birth")
     @classmethod
     def validate_date_of_birth(cls, v):
-        if v is None or v == "":
+        if v is None:
             return v
         try:
             dob = datetime.strptime(v, "%Y-%m-%d").date()
         except ValueError:
-            raise ValueError("date_of_birth must be in YYYY-MM-DD format")
+            raise ValueError("Date of birth must be in YYYY-MM-DD format")
+
         today = date.today()
         if dob >= today:
-            raise ValueError("date_of_birth must be a past date")
-        age = (today - dob).days // 365
-        if age < 15:
-            raise ValueError("Student must be at least 15 years old")
+            raise ValueError("Date of birth must be in the past")
+
+        # Calculate age
+        age = today.year - dob.year - ((today.month, today.day) < (dob.month, dob.day))
+        if age < 18:
+            raise ValueError("You must be at least 18 years old")
+
         return v
 
 
@@ -125,6 +137,14 @@ class StudentProfileUpdate(BaseModel):
     about: Optional[str] = Field(default=None, max_length=1000)
     sgpa: Optional[float] = None
     marksheet_url: Optional[str] = None
+    marks_10th: Optional[float] = Field(default=None, ge=0, le=100)
+    board_10th: Optional[str] = Field(default=None, max_length=100)
+    marksheet_10th_url: Optional[str] = None
+    marks_12th: Optional[float] = Field(default=None, ge=0, le=100)
+    board_12th: Optional[str] = Field(default=None, max_length=100)
+    marksheet_12th_url: Optional[str] = None
+    aadhar_last4: Optional[str] = Field(default=None, pattern=r"^\d{4}$")
+    aadhar_doc_url: Optional[str] = None
 
     @field_validator("cgpa")
     @classmethod
@@ -192,18 +212,22 @@ class StudentProfileUpdate(BaseModel):
     @field_validator("date_of_birth")
     @classmethod
     def validate_date_of_birth(cls, v):
-        if v is None or v == "":
+        if v is None:
             return v
         try:
             dob = datetime.strptime(v, "%Y-%m-%d").date()
         except ValueError:
-            raise ValueError("date_of_birth must be in YYYY-MM-DD format")
+            raise ValueError("Date of birth must be in YYYY-MM-DD format")
+
         today = date.today()
         if dob >= today:
-            raise ValueError("date_of_birth must be a past date")
-        age = (today - dob).days // 365
-        if age < 15:
-            raise ValueError("Student must be at least 15 years old")
+            raise ValueError("Date of birth must be in the past")
+
+        # Calculate age
+        age = today.year - dob.year - ((today.month, today.day) < (dob.month, dob.day))
+        if age < 18:
+            raise ValueError("You must be at least 18 years old")
+
         return v
 
 
@@ -232,6 +256,14 @@ class StudentProfileResponse(BaseModel):
     is_placed: bool = False
     placed_company: Optional[str] = None
     placed_package: Optional[float] = None
+    marks_10th: Optional[float] = None
+    board_10th: Optional[str] = None
+    marksheet_10th_url: Optional[str] = None
+    marks_12th: Optional[float] = None
+    board_12th: Optional[str] = None
+    marksheet_12th_url: Optional[str] = None
+    aadhar_last4: Optional[str] = None
+    aadhar_doc_url: Optional[str] = None
     created_at: str
     updated_at: str
 
@@ -255,6 +287,11 @@ class MarksheetUploadResponse(BaseModel):
 
 class OfferLetterUploadResponse(BaseModel):
     offer_letter_url: str
+    message: str
+
+
+class AadharDocUploadResponse(BaseModel):
+    aadhar_doc_url: str
     message: str
 
 

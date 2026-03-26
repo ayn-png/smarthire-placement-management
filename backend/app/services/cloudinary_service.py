@@ -300,6 +300,144 @@ async def upload_offer_letter(file: UploadFile, user_id: str) -> str:
         )
 
 
+async def upload_marksheet_10th(file: UploadFile, user_id: str) -> str:
+    """Upload 10th standard marksheet to Cloudinary."""
+    if not CLOUDINARY_ENABLED:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Cloud storage not configured",
+        )
+
+    content = await file.read()
+    content_type = file.content_type or ""
+    filename = file.filename or ""
+
+    allowed_types = {"application/pdf", "image/jpeg", "image/png", "image/jpg"}
+    is_pdf = content_type == "application/pdf" or filename.lower().endswith(".pdf")
+
+    if content_type not in allowed_types and not filename.lower().endswith((".pdf", ".jpg", ".jpeg", ".png")):
+        raise HTTPException(status_code=400, detail="Only PDF, JPEG, and PNG files are accepted")
+
+    max_bytes = settings.MAX_FILE_SIZE_MB * 1024 * 1024
+    if len(content) > max_bytes:
+        raise HTTPException(status_code=400, detail=f"File too large. Maximum size is {settings.MAX_FILE_SIZE_MB}MB")
+
+    if is_pdf and len(content) >= 4 and content[:4] != b"%PDF":
+        raise HTTPException(status_code=400, detail="Invalid PDF file")
+
+    resource_type = "raw" if is_pdf else "image"
+
+    try:
+        result = await asyncio.to_thread(
+            cloudinary.uploader.upload,
+            content,
+            folder="smarthire/marksheets_10th",
+            public_id=f"marksheet10_{user_id}",
+            resource_type=resource_type,
+            overwrite=True,
+            invalidate=True,
+        )
+        return result["secure_url"]
+    except Exception as e:
+        logger.error(f"Cloudinary 10th marksheet upload failed: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to upload 10th marksheet to cloud storage",
+        )
+
+
+async def upload_marksheet_12th(file: UploadFile, user_id: str) -> str:
+    """Upload 12th standard marksheet to Cloudinary."""
+    if not CLOUDINARY_ENABLED:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Cloud storage not configured",
+        )
+
+    content = await file.read()
+    content_type = file.content_type or ""
+    filename = file.filename or ""
+
+    allowed_types = {"application/pdf", "image/jpeg", "image/png", "image/jpg"}
+    is_pdf = content_type == "application/pdf" or filename.lower().endswith(".pdf")
+
+    if content_type not in allowed_types and not filename.lower().endswith((".pdf", ".jpg", ".jpeg", ".png")):
+        raise HTTPException(status_code=400, detail="Only PDF, JPEG, and PNG files are accepted")
+
+    max_bytes = settings.MAX_FILE_SIZE_MB * 1024 * 1024
+    if len(content) > max_bytes:
+        raise HTTPException(status_code=400, detail=f"File too large. Maximum size is {settings.MAX_FILE_SIZE_MB}MB")
+
+    if is_pdf and len(content) >= 4 and content[:4] != b"%PDF":
+        raise HTTPException(status_code=400, detail="Invalid PDF file")
+
+    resource_type = "raw" if is_pdf else "image"
+
+    try:
+        result = await asyncio.to_thread(
+            cloudinary.uploader.upload,
+            content,
+            folder="smarthire/marksheets_12th",
+            public_id=f"marksheet12_{user_id}",
+            resource_type=resource_type,
+            overwrite=True,
+            invalidate=True,
+        )
+        return result["secure_url"]
+    except Exception as e:
+        logger.error(f"Cloudinary 12th marksheet upload failed: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to upload 12th marksheet to cloud storage",
+        )
+
+
+async def upload_aadhar_doc(file: UploadFile, user_id: str) -> str:
+    """Upload Aadhar/Govt ID document to Cloudinary."""
+    if not CLOUDINARY_ENABLED:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Cloud storage not configured",
+        )
+
+    content = await file.read()
+    content_type = file.content_type or ""
+    filename = file.filename or ""
+
+    allowed_types = {"application/pdf", "image/jpeg", "image/png", "image/jpg"}
+    is_pdf = content_type == "application/pdf" or filename.lower().endswith(".pdf")
+
+    if content_type not in allowed_types and not filename.lower().endswith((".pdf", ".jpg", ".jpeg", ".png")):
+        raise HTTPException(status_code=400, detail="Only PDF, JPEG, and PNG files are accepted")
+
+    max_bytes = settings.MAX_FILE_SIZE_MB * 1024 * 1024
+    if len(content) > max_bytes:
+        raise HTTPException(status_code=400, detail=f"File too large. Maximum size is {settings.MAX_FILE_SIZE_MB}MB")
+
+    if is_pdf and len(content) >= 4 and content[:4] != b"%PDF":
+        raise HTTPException(status_code=400, detail="Invalid PDF file")
+
+    resource_type = "raw" if is_pdf else "image"
+
+    try:
+        result = await asyncio.to_thread(
+            cloudinary.uploader.upload,
+            content,
+            folder="smarthire/aadhar_docs",
+            public_id=f"aadhar_{user_id}",
+            resource_type=resource_type,
+            overwrite=True,
+            invalidate=True,
+        )
+        return result["secure_url"]
+    except Exception as e:
+        logger.error(f"Cloudinary Aadhar doc upload failed: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to upload Aadhar document to cloud storage",
+        )
+
+
 def delete_file(file_url: str) -> bool:
     """
     Delete a file from Cloudinary given its URL.

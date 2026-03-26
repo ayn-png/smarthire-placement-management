@@ -65,6 +65,21 @@ async def save_offer_letter(file: UploadFile, user_id: str) -> str:
     return await cloudinary_service.upload_offer_letter(file, user_id)
 
 
+async def save_marksheet_10th(file: UploadFile, user_id: str) -> str:
+    """Upload 10th standard marksheet to Cloudinary."""
+    return await cloudinary_service.upload_marksheet_10th(file, user_id)
+
+
+async def save_marksheet_12th(file: UploadFile, user_id: str) -> str:
+    """Upload 12th standard marksheet to Cloudinary."""
+    return await cloudinary_service.upload_marksheet_12th(file, user_id)
+
+
+async def save_aadhar_doc(file: UploadFile, user_id: str) -> str:
+    """Upload Aadhar/Govt ID document to Cloudinary."""
+    return await cloudinary_service.upload_aadhar_doc(file, user_id)
+
+
 def resume_exists(file_url: str) -> bool:
     """
     Return True if the resume file exists.
