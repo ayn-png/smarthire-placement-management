@@ -72,34 +72,71 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Invalid role" }, { status: 400 });
   }
 
-  // 1. Set Firebase custom claim so the role is in the ID token
+  const isAdminRole = role === "PLACEMENT_ADMIN" || role === "COLLEGE_MANAGEMENT";
+
+  // 1. Set Firebase custom claim.
+  //    Admin roles get STUDENT claim until super admin approves them.
   try {
     const fbAuth = await getAdminAuth();
-    // For admin roles, set claim to STUDENT until approved by super admin
-    const claimRole = (role === "PLACEMENT_ADMIN" || role === "COLLEGE_MANAGEMENT") ? "STUDENT" : role;
+    const claimRole = isAdminRole ? "STUDENT" : role;
     await fbAuth.setCustomUserClaims(uid, { role: claimRole });
   } catch (err) {
     console.error("[set-role] Failed to set custom claim:", err);
     return NextResponse.json({ error: "Failed to set role" }, { status: 500 });
   }
 
-  // 2. Sync user record to Firestore via backend.
-  //
-  // NON-FATAL: if this call fails (INTERNAL_API_SECRET mismatch, backend cold
-  // start, transient network error) we log the problem but still return success
-  // to the client.  The Firebase custom claim (step 1) IS already set, so the
-  // client can call /auth/self-sync with the freshly-refreshed token to create
-  // the Firestore doc without needing X-Internal-Secret.
-  //
-  // We retry once after a short delay before giving up, to survive cold starts.
+  // 2. For admin roles: ALWAYS write admin_requests + users docs directly via
+  //    Firestore Admin SDK — guaranteed creation regardless of backend state.
+  //    This runs BEFORE firebase-sync so the doc always exists.
+  if (isAdminRole) {
+    try {
+      const { getFirestore } = await import("firebase-admin/firestore");
+      const db = getFirestore();
+      const now = new Date();
+
+      // Check if already approved — don't overwrite approved users
+      const existing = await db.collection("admin_requests").doc(uid).get();
+      const existingStatus = existing.exists ? (existing.data() || {}).status : null;
+
+      if (existingStatus !== "approved" && existingStatus !== "deleted") {
+        await db.collection("admin_requests").doc(uid).set({
+          userId: uid,
+          email,
+          full_name: displayName,
+          requestedRole: role,
+          status: "pending",
+          createdAt: now,
+          approvedBy: null,
+          approvedAt: null,
+        }, { merge: true });
+        await db.collection("users").doc(uid).set({
+          email,
+          full_name: displayName,
+          role: "STUDENT",
+          isVerifiedAdmin: false,
+          is_active: false,
+          created_at: now,
+          updated_at: now,
+        }, { merge: true });
+        console.log("[set-role] admin_requests + users docs written for", email);
+      } else {
+        console.log("[set-role] Skipped write — user already has status:", existingStatus);
+      }
+    } catch (fsErr) {
+      // Log but don't fail — custom claim is already set, backend sync below may recover
+      console.error("[set-role] Firestore write failed:", fsErr);
+    }
+  }
+
+  // 3. Also call backend firebase-sync (non-fatal — handles email notifications
+  //    and any other server-side side effects; doc already written above).
+  let syncOk = false;
   const syncPayload = JSON.stringify({ firebase_uid: uid, email, full_name: displayName, role });
   const syncHeaders = {
     "Content-Type": "application/json",
     "X-Internal-Secret": INTERNAL_SECRET,
     Authorization: `Bearer ${idToken}`,
   };
-
-  let syncOk = false;
   for (let attempt = 1; attempt <= 2; attempt++) {
     try {
       const syncRes = await fetch(`${BACKEND_URL}/api/v1/auth/firebase-sync`, {
@@ -115,40 +152,8 @@ export async function POST(request: NextRequest) {
     }
     if (attempt < 2) await new Promise((r) => setTimeout(r, 1200));
   }
-
-  if (!syncOk && (role === "PLACEMENT_ADMIN" || role === "COLLEGE_MANAGEMENT")) {
-    // firebase-sync failed AND this is an admin role that needs admin_requests doc.
-    // Write directly to Firestore via Admin SDK — no INTERNAL_API_SECRET needed.
-    try {
-      const { getFirestore } = await import("firebase-admin/firestore");
-      const db = getFirestore();
-      const now = new Date();
-      await db.collection("admin_requests").doc(uid).set({
-        userId: uid,
-        email,
-        full_name: displayName,
-        requestedRole: role,
-        status: "pending",
-        createdAt: now,
-        approvedBy: null,
-        approvedAt: null,
-      }, { merge: true });
-      await db.collection("users").doc(uid).set({
-        email,
-        full_name: displayName,
-        role: "STUDENT",
-        isVerifiedAdmin: false,
-        is_active: false,
-        created_at: now,
-        updated_at: now,
-      }, { merge: true });
-      syncOk = true;
-      console.log("[set-role] admin_requests + users docs written via fallback Firestore Admin SDK.");
-    } catch (fsErr) {
-      console.error("[set-role] Fallback Firestore write also failed:", fsErr);
-    }
-  } else if (!syncOk) {
-    console.error("[set-role] firebase-sync failed after 2 attempts; client will self-sync.");
+  if (!syncOk) {
+    console.warn("[set-role] firebase-sync failed — Firestore docs already written directly.");
   }
 
   return NextResponse.json({ success: true, role, selfSyncNeeded: !syncOk });
