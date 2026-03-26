@@ -13,6 +13,7 @@ import Pagination from "@/components/ui/Pagination";
 import { studentService } from "@/services/api";
 import { StudentProfile } from "@/types";
 import { FadeIn } from "@/components/ui/Animations";
+import { getFileUrl } from "@/lib/utils";
 
 const BRANCHES = ["CSE", "ECE", "ME", "CE", "EE", "IT", "Other"];
 const PAGE_LIMIT = 20;
@@ -198,7 +199,7 @@ export default function AdminStudentsPage() {
                     <div className="w-11 h-11 rounded-full bg-gradient-to-br from-primary-400 to-primary-600 flex items-center justify-center flex-shrink-0 ring-2 ring-primary-100 dark:ring-primary-900/30">
                       {(s as StudentProfile & { avatar_url?: string }).avatar_url ? (
                         <img
-                          src={(s as StudentProfile & { avatar_url?: string }).avatar_url}
+                          src={getFileUrl((s as StudentProfile & { avatar_url?: string }).avatar_url)}
                           alt={s.full_name ?? "Student"}
                           className="w-11 h-11 rounded-full object-cover"
                         />

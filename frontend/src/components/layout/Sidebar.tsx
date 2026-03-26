@@ -11,7 +11,7 @@ import {
   Building2, BarChart3, LogOut, GraduationCap,
   PieChart, TrendingUp, ChevronLeft, ChevronRight, X, Users,
   Globe, CalendarDays, Calendar,
-  Settings2, UserCheck,
+  Settings2,
 } from "lucide-react";
 
 const STUDENT_NAV = [
@@ -38,7 +38,6 @@ const MANAGEMENT_NAV = [
   { href: "/management/analytics",      label: "Analytics",      icon: PieChart },
   { href: "/management/statistics",     label: "Statistics",     icon: TrendingUp },
   { href: "/management/reports",        label: "Reports",        icon: BarChart3 },
-  { href: "/management/admin-requests", label: "Admin Requests", icon: UserCheck },
 ];
 
 interface SidebarProps {

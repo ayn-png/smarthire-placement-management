@@ -1,10 +1,11 @@
 "use client";
 import { useEffect, useState } from "react";
-import { Building2, Briefcase, Users, TrendingUp, Sparkles, AlertTriangle, X } from "lucide-react";
-import { motion } from "framer-motion";
+import { useRouter } from "next/navigation";
+import { Building2, Briefcase, Users, TrendingUp, Sparkles, AlertTriangle, X, UserCircle, Settings2 } from "lucide-react";
+import { motion, AnimatePresence } from "framer-motion";
 import StatsCard from "@/components/shared/StatsCard";
 import Card from "@/components/ui/Card";
-import { analyticsService, marketJobsService } from "@/services/api";
+import { analyticsService, marketJobsService, adminProfileService } from "@/services/api";
 import { AnalyticsDashboard } from "@/types";
 import LoadingSpinner from "@/components/ui/LoadingSpinner";
 import { FadeIn, StaggerContainer, StaggerItem } from "@/components/ui/Animations";
@@ -19,11 +20,13 @@ interface SystemStatus {
 }
 
 export default function AdminDashboard() {
+  const router = useRouter();
   const [analytics, setAnalytics] = useState<AnalyticsDashboard | null>(null);
   const [loading, setLoading] = useState(true);
   const [systemStatus, setSystemStatus] = useState<SystemStatus | null>(null);
   const [dismissedWarnings, setDismissedWarnings] = useState<Set<string>>(new Set());
   const [marketStats, setMarketStats] = useState<Array<{ department: string; click_count: number }>>([]);
+  const [showProfileModal, setShowProfileModal] = useState(false);
 
   useEffect(() => {
     analyticsService.getDashboard()
@@ -37,6 +40,16 @@ export default function AdminDashboard() {
     marketJobsService.getStats()
       .then((d) => setMarketStats(d.stats))
       .catch(() => {});
+    // Check if admin profile is complete — show modal if not
+    const reminded = sessionStorage.getItem("profile_modal_dismissed");
+    if (!reminded) {
+      adminProfileService.get()
+        .then((res: { data?: { full_name?: string } }) => {
+          const name = res?.data?.full_name;
+          if (!name || name.trim() === "") setShowProfileModal(true);
+        })
+        .catch(() => setShowProfileModal(true)); // 404 = no profile yet
+    }
   }, []);
 
   const warnings: { key: string; message: string }[] = [];
@@ -57,6 +70,45 @@ export default function AdminDashboard() {
 
   return (
     <div className="space-y-8">
+      {/* Profile setup modal */}
+      <AnimatePresence>
+        {showProfileModal && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4"
+          >
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              className="bg-white dark:bg-surface-800 rounded-2xl shadow-2xl max-w-md w-full p-8 text-center"
+            >
+              <div className="inline-flex items-center justify-center w-16 h-16 bg-primary-100 dark:bg-primary-900/30 rounded-2xl mb-4">
+                <UserCircle className="w-8 h-8 text-primary-600 dark:text-primary-400" />
+              </div>
+              <h2 className="text-xl font-bold text-surface-900 dark:text-white mb-2">Complete Your Profile</h2>
+              <p className="text-surface-500 dark:text-surface-400 text-sm mb-6 leading-relaxed">
+                Set up your admin profile to personalize your experience and let students know who manages the placement portal.
+              </p>
+              <button
+                onClick={() => { setShowProfileModal(false); router.push("/admin/settings"); }}
+                className="w-full flex items-center justify-center gap-2 px-6 py-3 bg-primary-600 hover:bg-primary-700 text-white font-semibold rounded-xl transition-colors mb-3"
+              >
+                <Settings2 className="w-4 h-4" /> Go to Settings
+              </button>
+              <button
+                onClick={() => { sessionStorage.setItem("profile_modal_dismissed", "1"); setShowProfileModal(false); }}
+                className="text-sm text-surface-400 dark:text-surface-500 hover:text-surface-600 dark:hover:text-surface-300 transition-colors"
+              >
+                Remind me later
+              </button>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       <FadeIn>
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-primary-500 to-primary-700 flex items-center justify-center shadow-glow-sm">

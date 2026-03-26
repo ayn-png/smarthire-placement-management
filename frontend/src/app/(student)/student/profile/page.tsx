@@ -82,6 +82,13 @@ function AvatarUpload({
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState("");
 
+  // Sync avatarUrl prop → preview state (fixes blank avatar after async profile load)
+  useEffect(() => {
+    if (avatarUrl && !uploading) {
+      setPreview(getFileUrl(avatarUrl) || null);
+    }
+  }, [avatarUrl]);
+
   async function handleFile(file: File) {
     if (file.size > 2 * 1024 * 1024) { setError("Image must be smaller than 2 MB"); return; }
     if (!["image/jpeg", "image/png", "image/webp"].includes(file.type)) {
@@ -684,8 +691,6 @@ export default function ProfilePage() {
                   label="Roll Number *"
                   placeholder="123456789"
                   error={errors.roll_number?.message}
-                  readOnly={!!profile}
-                  className={!!profile ? "bg-surface-50 dark:bg-surface-900 cursor-not-allowed opacity-70" : ""}
                 />
                 <Controller
                   name="branch"
