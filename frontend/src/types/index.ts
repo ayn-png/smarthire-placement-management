@@ -39,6 +39,10 @@ export interface StudentProfile {
   resume_url?: string;
   sgpa?: number;
   marksheet_url?: string;
+  offer_letter_url?: string;
+  is_placed?: boolean;
+  placed_company?: string;
+  placed_package?: number;
   created_at: string;
   updated_at: string;
 }
@@ -265,4 +269,58 @@ export interface AppNotification {
   read: boolean;
   link?: string;
   created_at: string;
+}
+
+// Feature 2 — Placement Drives
+export type DriveStatus = "UPCOMING" | "ONGOING" | "COMPLETED" | "CANCELLED";
+export interface PlacementDrive {
+  id: string;
+  title: string;
+  description?: string;
+  company_id?: string;
+  company_name?: string;
+  job_ids: string[];
+  drive_date: string;
+  eligible_branches: string[];
+  min_cgpa: number;
+  venue?: string;
+  status: DriveStatus;
+  created_at: string;
+  updated_at: string;
+}
+
+// Feature 6 — Interview Schedule
+export interface InterviewScheduleItem {
+  id: string;
+  job_id: string;
+  job_title?: string;
+  company_name?: string;
+  interview_date: string;
+  interview_type?: string;
+  interview_link?: string;
+  interview_location?: string;
+  status: string;
+}
+
+// Feature 3 — Student placement status
+export interface StudentPlacedStatus {
+  is_placed: boolean;
+  placed_company?: string;
+  placed_package?: number;
+}
+
+// Feature 5 — AI Ranking
+export interface ApplicantRank {
+  application_id: string;
+  student_name: string;
+  score: number;
+  strengths: string[];
+  gaps: string[];
+  cgpa?: number;
+}
+export interface RankingResponse {
+  job_id: string;
+  ranked: ApplicantRank[];
+  cached: boolean;
+  ranked_at: string;
 }

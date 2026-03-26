@@ -17,7 +17,7 @@ export default function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
   // Always allow static public paths
-  const publicPaths = ["/forgot-password", "/reset-password"];
+  const publicPaths = ["/forgot-password", "/reset-password", "/verify-email"];
   if (publicPaths.some((p) => pathname === p || pathname.startsWith(p + "/"))) {
     return NextResponse.next();
   }

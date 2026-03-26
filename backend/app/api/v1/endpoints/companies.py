@@ -3,10 +3,14 @@ from fastapi.responses import StreamingResponse
 from typing import Optional
 import csv
 import io
+import asyncio
+import logging
 from app.schemas.job import CompanyCreate, CompanyUpdate, CompanyResponse
 from app.services.company_service import CompanyService
 from app.middleware.auth import get_current_user, require_admin
 from app.db.database import get_database
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/companies", tags=["Companies"])
 
@@ -43,8 +47,14 @@ async def export_companies_csv(
     service: CompanyService = Depends(get_company_service),
 ):
     """Export companies list as CSV file (streamed row-by-row)."""
-    result = await service.list_companies(industry, page=1, limit=10000)
+    _EXPORT_LIMIT = 10000
+    result = await service.list_companies(industry, page=1, limit=_EXPORT_LIMIT)
     companies = result["companies"]
+
+    # B-11: warn if results were capped
+    truncated = len(companies) >= _EXPORT_LIMIT
+    if truncated:
+        logger.warning("CSV export truncated at %d records for companies", _EXPORT_LIMIT)
 
     def _fmt_dt(val):
         if not val:
@@ -79,10 +89,15 @@ async def export_companies_csv(
             buf.truncate(0)
             buf.seek(0)
 
+    response_headers = {"Content-Disposition": "attachment; filename=companies_export.csv"}
+    if truncated:
+        response_headers["X-Export-Truncated"] = "true"
+        response_headers["X-Export-Warning"] = f"Results capped at {_EXPORT_LIMIT} records"
+
     return StreamingResponse(
         csv_generator(),
         media_type="text/csv",
-        headers={"Content-Disposition": "attachment; filename=companies_export.csv"},
+        headers=response_headers,
     )
 
 
@@ -110,5 +125,19 @@ async def delete_company(
     company_id: str,
     current_user: dict = Depends(require_admin),
     service: CompanyService = Depends(get_company_service),
+    db=Depends(get_database),
 ):
+    # B-08: Before deleting the company, soft-close all its jobs
+    def _close_company_jobs():
+        jobs = db.collection("jobs").where("company_id", "==", company_id).get()
+        closed = 0
+        for doc in jobs:
+            doc.reference.update({"status": "CLOSED"})
+            closed += 1
+        return closed
+
+    closed_count = await asyncio.to_thread(_close_company_jobs)
+    if closed_count:
+        logger.info("Soft-closed %d jobs for deleted company %s", closed_count, company_id)
+
     await service.delete_company(company_id)

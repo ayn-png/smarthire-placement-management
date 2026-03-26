@@ -1,21 +1,40 @@
-from fastapi import APIRouter, Depends, Query, BackgroundTasks
+from fastapi import APIRouter, Depends, Query, BackgroundTasks, HTTPException, status
 from fastapi.responses import StreamingResponse
 from typing import Optional
 import csv
 import io
+import logging
+from datetime import datetime
 from app.schemas.application import (
     ApplicationCreate, ApplicationStatusUpdate, ApplicationResponse,
-    BulkStatusUpdate, BulkStatusUpdateResponse,           # Feature 9
+    BulkStatusUpdate, BulkStatusUpdateResponse,
 )
 from app.services.application_service import ApplicationService
 from app.middleware.auth import get_current_user, require_student, require_admin
 from app.db.database import get_database
 
+logger = logging.getLogger(__name__)
+
 router = APIRouter(prefix="/applications", tags=["Applications"])
+
+_EXPORT_LIMIT = 10000
 
 
 def get_app_service(db=Depends(get_database)) -> ApplicationService:
     return ApplicationService(db)
+
+
+def _parse_date(val: Optional[str], name: str) -> Optional[datetime]:
+    """Parse a YYYY-MM-DD date string, raising HTTP 400 on invalid format."""
+    if val is None or val == "":
+        return None
+    try:
+        return datetime.strptime(val, "%Y-%m-%d")
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid date format for '{name}'. Expected YYYY-MM-DD (e.g. 2025-06-15).",
+        )
 
 
 @router.post("/", response_model=ApplicationResponse, status_code=201)
@@ -36,6 +55,16 @@ async def my_applications(
     return await service.get_my_applications(current_user, status)
 
 
+# Feature 6 — Interview schedule endpoint
+@router.get("/my/interviews", response_model=list)
+async def my_interviews(
+    current_user: dict = Depends(require_student),
+    service: ApplicationService = Depends(get_app_service),
+):
+    """Return all of the student's applications that have an interview scheduled."""
+    return await service.get_my_interviews(current_user)
+
+
 @router.get("/", response_model=dict)
 async def list_applications(
     job_id: Optional[str] = Query(None),
@@ -49,6 +78,9 @@ async def list_applications(
     current_user: dict = Depends(require_admin),
     service: ApplicationService = Depends(get_app_service),
 ):
+    # B-14: validate date format before passing to service
+    _parse_date(from_date, "from_date")
+    _parse_date(to_date, "to_date")
     return await service.list_applications(job_id, status, branch, min_cgpa, from_date, to_date, page, limit)
 
 
@@ -57,12 +89,23 @@ async def export_applications_csv(
     job_id: Optional[str] = Query(None),
     status: Optional[str] = Query(None),
     branch: Optional[str] = Query(None),
+    from_date: Optional[str] = Query(None),
+    to_date: Optional[str] = Query(None),
     current_user: dict = Depends(require_admin),
     service: ApplicationService = Depends(get_app_service),
 ):
     """Export applications list as CSV file (streamed row-by-row)."""
-    result = await service.list_applications(job_id, status, branch, None, None, None, page=1, limit=10000)
+    # B-14: validate date format
+    _parse_date(from_date, "from_date")
+    _parse_date(to_date, "to_date")
+
+    result = await service.list_applications(job_id, status, branch, None, from_date, to_date, page=1, limit=_EXPORT_LIMIT)
     applications = result["applications"]
+
+    # B-11: warn if results were capped
+    truncated = len(applications) >= _EXPORT_LIMIT
+    if truncated:
+        logger.warning("CSV export truncated at %d records for applications", _EXPORT_LIMIT)
 
     def _fmt_dt(val, fmt):
         if not val:
@@ -88,7 +131,7 @@ async def export_applications_csv(
                 app.id,
                 app.student_name or "N/A",
                 app.student_email or "N/A",
-                app.student_roll_number or "N/A",
+                getattr(app, "student_roll_number", None) or "N/A",
                 app.student_branch or "N/A",
                 app.student_cgpa or "N/A",
                 app.job_title or "N/A",
@@ -103,10 +146,15 @@ async def export_applications_csv(
             buf.truncate(0)
             buf.seek(0)
 
+    response_headers = {"Content-Disposition": "attachment; filename=applications_export.csv"}
+    if truncated:
+        response_headers["X-Export-Truncated"] = "true"
+        response_headers["X-Export-Warning"] = f"Results capped at {_EXPORT_LIMIT} records"
+
     return StreamingResponse(
         csv_generator(),
         media_type="text/csv",
-        headers={"Content-Disposition": "attachment; filename=applications_export.csv"},
+        headers=response_headers,
     )
 
 
@@ -118,7 +166,7 @@ async def bulk_update_status(
     current_user: dict = Depends(require_admin),
     service: ApplicationService = Depends(get_app_service),
 ):
-    """Update status of multiple applications in one request (Feature 9)."""
+    """Update status of multiple applications in one request."""
     return await service.bulk_update_status(data, background_tasks.add_task)
 
 
@@ -135,11 +183,10 @@ async def get_application(
 async def update_application_status(
     application_id: str,
     data: ApplicationStatusUpdate,
-    background_tasks: BackgroundTasks,                    # Feature 1
+    background_tasks: BackgroundTasks,
     current_user: dict = Depends(require_admin),
     service: ApplicationService = Depends(get_app_service),
 ):
-    """Feature 1 — pass add_task so the service queues email in background."""
     return await service.update_status(application_id, data, background_tasks.add_task)
 
 

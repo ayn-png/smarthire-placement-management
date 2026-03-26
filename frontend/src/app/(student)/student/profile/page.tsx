@@ -17,17 +17,32 @@ import BranchSelect, { BranchValue, BRANCH_OPTIONS } from "@/components/ui/Branc
 
 const schema = z.object({
   full_name: z.string().min(2, "Full name must be at least 2 characters").regex(/^[A-Za-z\s]+$/, "Name must contain only letters and spaces"),
-  roll_number: z.string().min(1, "Roll number required"),
+  roll_number: z.string().min(3, "Roll number must be at least 3 characters").max(30, "Roll number too long").regex(/^[A-Za-z0-9\-/]+$/, "Roll number can only contain letters, digits, hyphens, and slashes"),
   branch: z.string().min(1, "Branch required"),
   semester: z.number({ coerce: true }).int().min(1).max(10),
   cgpa: z.number({ coerce: true }).min(0).max(10),
   sgpa: z.number({ coerce: true }).min(0).max(10).optional().or(z.literal("")).transform((v) => v === "" ? undefined : v),
   phone: z.string().regex(/^[0-9]{10}$/, "Phone must be exactly 10 digits"),
   date_of_birth: z.string().optional(),
-  address: z.string().optional(),
-  linkedin_url: z.string().url("Enter valid URL").optional().or(z.literal("")),
-  github_url: z.string().url("Enter valid URL").optional().or(z.literal("")),
-  about: z.string().optional(),
+  address: z.string().max(500, "Address must be 500 characters or less").optional(),
+  // B-18: LinkedIn must start with https://linkedin.com/ or https://www.linkedin.com/
+  linkedin_url: z.string()
+    .refine(
+      (v) => !v || v.startsWith("https://linkedin.com/") || v.startsWith("https://www.linkedin.com/"),
+      { message: "Must be a LinkedIn URL (https://linkedin.com/in/...)" }
+    )
+    .optional()
+    .or(z.literal("")),
+  // B-18: GitHub must start with https://github.com/
+  github_url: z.string()
+    .refine(
+      (v) => !v || v.startsWith("https://github.com/"),
+      { message: "Must be a GitHub URL (https://github.com/...)" }
+    )
+    .optional()
+    .or(z.literal("")),
+  // B-17: about max 1000 chars
+  about: z.string().max(1000, "Bio must be 1000 characters or less").optional(),
   skills: z.string().optional(),
   certifications: z.string().optional(),
 });
@@ -378,8 +393,11 @@ export default function ProfilePage() {
     reset,
     control,
     setValue,
+    watch,
     formState: { errors, isSubmitting },
   } = useForm<FormData>({ resolver: zodResolver(schema) });
+
+  const watchedAbout = watch("about");
 
   useEffect(() => {
     studentService.getMyProfile()
@@ -580,19 +598,26 @@ export default function ProfilePage() {
                 <div className="md:col-span-2">
                   <Input {...register("full_name")} label="Full Name *" placeholder="John Doe" error={errors.full_name?.message} />
                 </div>
-                <Input {...register("phone")} label="Phone Number *" placeholder="+91 9876543210" error={errors.phone?.message} />
+                <Input {...register("phone")} label="Phone Number * (10 digits)" placeholder="9876543210" error={errors.phone?.message} />
                 <Input {...register("date_of_birth")} label="Date of Birth" type="date" error={errors.date_of_birth?.message} />
                 <div className="md:col-span-2">
                   <Input {...register("address")} label="Address" placeholder="Your address" error={errors.address?.message} />
                 </div>
                 <div className="md:col-span-2">
-                  <label className="block text-sm font-medium text-surface-700 dark:text-surface-300 mb-1">About Me</label>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="block text-sm font-medium text-surface-700 dark:text-surface-300">About Me</label>
+                    <span className={`text-xs ${(watchedAbout?.length ?? 0) > 900 ? "text-amber-500" : "text-surface-400 dark:text-surface-500"}`}>
+                      {watchedAbout?.length ?? 0}/1000
+                    </span>
+                  </div>
                   <textarea
                     {...register("about")}
                     rows={3}
+                    maxLength={1000}
                     placeholder="Brief description about yourself..."
-                    className="w-full px-4 py-3 border border-surface-300 dark:border-surface-600 rounded-xl text-sm bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 focus:outline-none focus:ring-2 focus:ring-primary-500 dark:focus:ring-primary-400 resize-none placeholder:text-surface-400 dark:placeholder:text-surface-500 transition-colors"
+                    className={`w-full px-4 py-3 border rounded-xl text-sm bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 focus:outline-none focus:ring-2 focus:ring-primary-500 dark:focus:ring-primary-400 resize-none placeholder:text-surface-400 dark:placeholder:text-surface-500 transition-colors ${errors.about ? "border-red-400 dark:border-red-500" : "border-surface-300 dark:border-surface-600"}`}
                   />
+                  {errors.about && <p className="mt-1 text-xs text-red-500">{errors.about.message}</p>}
                 </div>
               </div>
             </Card>

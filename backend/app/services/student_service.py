@@ -6,7 +6,10 @@ All Firestore SDK calls are synchronous and wrapped in asyncio.to_thread().
 import asyncio
 from datetime import datetime
 
-from app.schemas.student import StudentProfileCreate, StudentProfileUpdate, StudentProfileResponse
+from app.schemas.student import (
+    StudentProfileCreate, StudentProfileUpdate, StudentProfileResponse,
+    PlacedStatusUpdate,
+)
 from app.core.exceptions import NotFoundException, ConflictException
 from app.db.helpers import serialize_doc, utcnow
 
@@ -246,6 +249,66 @@ class StudentService:
 
         profiles = [self._to_response(p) for p in paginated]
         return {"profiles": profiles, "total": total, "page": page, "limit": limit}
+
+    async def update_offer_letter_url(self, user: dict, offer_url: str) -> None:
+        """Persist offer letter URL for the student profile."""
+        user_id = user["id"]
+        doc = await asyncio.to_thread(
+            self.db.collection("student_profiles").document(user_id).get
+        )
+        if not doc.exists:
+            from fastapi import HTTPException
+            raise HTTPException(
+                status_code=422,
+                detail="Please complete your student profile before uploading an offer letter.",
+            )
+        await asyncio.to_thread(
+            self.db.collection("student_profiles").document(user_id).update,
+            {"offer_letter_url": offer_url, "updated_at": utcnow()},
+        )
+
+    async def update_placed_status(self, student_id: str, data: PlacedStatusUpdate, admin_user: dict) -> StudentProfileResponse:
+        """Admin marks a student as placed (or unplaced)."""
+        import logging
+        logger = logging.getLogger(__name__)
+
+        doc = await asyncio.to_thread(
+            self.db.collection("student_profiles").document(student_id).get
+        )
+        if not doc.exists:
+            raise NotFoundException("Student profile")
+
+        update_payload = {
+            "is_placed": data.is_placed,
+            "placed_company": data.placed_company,
+            "placed_package": data.placed_package,
+            "updated_at": utcnow(),
+        }
+        await asyncio.to_thread(
+            self.db.collection("student_profiles").document(student_id).update,
+            update_payload,
+        )
+
+        # Send in-app notification to the student
+        try:
+            profile_data = doc.to_dict() or {}
+            student_user_id = profile_data.get("user_id", student_id)
+            if data.is_placed and data.placed_company:
+                from app.services.notification_service import NotificationService
+                notif_svc = NotificationService(self.db)
+                await notif_svc.create(
+                    user_id=student_user_id,
+                    title="Congratulations! You are placed!",
+                    message=f"You have been marked as placed at {data.placed_company}. Best wishes!",
+                    link="/student/profile",
+                )
+        except Exception as exc:
+            logger.warning("Failed to send placed-status notification: %s", exc)
+
+        updated_doc = await asyncio.to_thread(
+            self.db.collection("student_profiles").document(student_id).get
+        )
+        return self._to_response(_doc_to_dict(updated_doc))
 
     def _to_response(self, doc: dict) -> StudentProfileResponse:
         return StudentProfileResponse(**doc)

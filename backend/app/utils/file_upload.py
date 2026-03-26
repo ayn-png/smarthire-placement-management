@@ -57,6 +57,14 @@ async def save_marksheet(file: UploadFile, user_id: str) -> str:
     return await cloudinary_service.upload_marksheet(file, user_id)
 
 
+async def save_offer_letter(file: UploadFile, user_id: str) -> str:
+    """
+    Validate and save uploaded offer letter PDF to Cloudinary.
+    Returns the Cloudinary URL.
+    """
+    return await cloudinary_service.upload_offer_letter(file, user_id)
+
+
 def resume_exists(file_url: str) -> bool:
     """
     Return True if the resume file exists.

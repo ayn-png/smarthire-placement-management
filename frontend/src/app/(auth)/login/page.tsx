@@ -6,8 +6,9 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { GraduationCap, Mail, Lock, Eye, EyeOff, ArrowRight, RefreshCw } from "lucide-react";
-import { signInWithEmailAndPassword, signOut } from "firebase/auth";
+import { signInWithEmailAndPassword, signOut, GoogleAuthProvider, signInWithPopup } from "firebase/auth";
 import { auth } from "@/lib/firebase";
+import GoogleIcon from "@/components/ui/GoogleIcon";
 import Button from "@/components/ui/Button";
 import Input from "@/components/ui/Input";
 import { ShakeOnError } from "@/components/ui/Animations";
@@ -35,6 +36,7 @@ export default function LoginPage() {
   const [resendingVerification, setResendingVerification] = useState(false);
   const [resendVerificationSuccess, setResendVerificationSuccess] = useState(false);
   const [resendVerificationError, setResendVerificationError] = useState("");
+  const [googleLoading, setGoogleLoading] = useState(false);
 
   const {
     register,
@@ -82,6 +84,48 @@ export default function LoginPage() {
       } else {
         setServerError(firebaseErr?.message || "Sign in failed. Please try again.");
       }
+    }
+  }
+
+  async function handleGoogleLogin() {
+    setServerError("");
+    setGoogleLoading(true);
+    try {
+      const provider = new GoogleAuthProvider();
+      const result = await signInWithPopup(auth, provider);
+      const tokenResult = await result.user.getIdTokenResult();
+      const role = tokenResult.claims.role as string | undefined;
+
+      // Set session cookie
+      document.cookie = "__session=1; path=/; SameSite=Lax";
+
+      if (role) {
+        document.cookie = `__role=${role}; path=/; SameSite=Lax`;
+        // Ensure Firestore user doc exists (idempotent self-sync)
+        try {
+          const token = await result.user.getIdToken();
+          const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+          await fetch(`${apiUrl}/api/v1/auth/self-sync`, {
+            method: "POST",
+            headers: { Authorization: `Bearer ${token}` },
+          });
+        } catch {
+          // Non-fatal — user doc may already exist
+        }
+        router.push(DASHBOARD_MAP[role] ?? "/signup/role-select");
+      } else {
+        // New Google user — needs role selection
+        router.push("/signup/role-select");
+      }
+    } catch (err: unknown) {
+      const code = (err as { code?: string })?.code || "";
+      if (code === "auth/popup-closed-by-user" || code === "auth/cancelled-popup-request") {
+        // User dismissed — silently ignore
+      } else {
+        setServerError("Google sign-in failed. Please try again.");
+      }
+    } finally {
+      setGoogleLoading(false);
     }
   }
 
@@ -212,7 +256,28 @@ export default function LoginPage() {
         </Button>
       </form>
 
-      <div className="mt-8 text-center text-sm text-white/50">
+      {/* Google sign-in divider */}
+      <div className="mt-6 flex items-center gap-3">
+        <div className="flex-1 h-px bg-white/10" />
+        <span className="text-white/40 text-xs font-medium">or continue with</span>
+        <div className="flex-1 h-px bg-white/10" />
+      </div>
+
+      <button
+        type="button"
+        onClick={handleGoogleLogin}
+        disabled={googleLoading}
+        className="mt-4 w-full flex items-center justify-center gap-3 px-4 py-3 bg-white/10 hover:bg-white/15 border border-white/20 rounded-xl text-white text-sm font-medium transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+      >
+        {googleLoading ? (
+          <RefreshCw className="w-5 h-5 animate-spin text-white/60" />
+        ) : (
+          <GoogleIcon className="w-5 h-5" />
+        )}
+        {googleLoading ? "Signing in…" : "Sign in with Google"}
+      </button>
+
+      <div className="mt-6 text-center text-sm text-white/50">
         Don&apos;t have an account?{" "}
         <Link href="/signup" className="text-primary-400 hover:text-primary-300 font-medium transition-colors">
           Sign up

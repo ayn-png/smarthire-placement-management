@@ -8,6 +8,7 @@ from app.schemas.job import JobCreate, JobUpdate, JobResponse
 from app.services.job_service import JobService
 from app.middleware.auth import get_current_user, require_admin
 from app.db.database import get_database
+from app.core.config import settings
 import logging
 
 logger = logging.getLogger(__name__)
@@ -22,13 +23,14 @@ def get_job_service(db=Depends(get_database)) -> JobService:
 async def _notify_students_about_new_job(db, job: JobResponse) -> None:
     """
     Background task: notify students whose branch matches the new job's
-    allowed_branches. Capped at 500 notifications to avoid abuse.
+    allowed_branches. Capped at settings.NOTIFICATION_BATCH_LIMIT (default 500).
     """
     try:
         from app.services.notification_service import NotificationService
         notif_svc = NotificationService(db)
 
         allowed = getattr(job, "allowed_branches", None) or []
+        cap = settings.NOTIFICATION_BATCH_LIMIT
 
         def _get_profiles():
             if allowed:
@@ -36,13 +38,21 @@ async def _notify_students_about_new_job(db, job: JobResponse) -> None:
                 results = []
                 for i in range(0, len(allowed), 30):
                     chunk = allowed[i:i + 30]
-                    docs = db.collection("student_profiles").where("branch", "in", chunk).limit(500).get()
+                    docs = db.collection("student_profiles").where("branch", "in", chunk).limit(cap).get()
                     results.extend(docs)
                 return results
-            return db.collection("student_profiles").limit(500).get()
+            return db.collection("student_profiles").limit(cap).get()
 
         raw_docs = await asyncio.to_thread(_get_profiles)
         profiles = [{"user_id": d.to_dict().get("user_id")} for d in raw_docs if d.exists]
+
+        # B-16: log warning when cap is hit
+        if len(profiles) >= cap:
+            logger.warning(
+                "Notification cap hit: notified %d students (cap=%d) for job %s. "
+                "Some eligible students were not notified.",
+                len(profiles), cap, getattr(job, "id", "unknown"),
+            )
 
         company_name = ""
         if getattr(job, "company_id", None):
@@ -88,7 +98,6 @@ async def create_job(
     return job
 
 
-
 @router.get("/", response_model=dict)
 async def list_jobs(
     status: Optional[str] = Query(None),
@@ -112,8 +121,14 @@ async def export_jobs_csv(
     service: JobService = Depends(get_job_service),
 ):
     """Export jobs list as CSV file (streamed row-by-row)."""
-    result = await service.list_jobs(status, None, None, None, job_type, page=1, limit=10000)
+    _EXPORT_LIMIT = 10000
+    result = await service.list_jobs(status, None, None, None, job_type, page=1, limit=_EXPORT_LIMIT)
     jobs = result["jobs"]
+
+    # B-11: warn if results were capped
+    truncated = len(jobs) >= _EXPORT_LIMIT
+    if truncated:
+        logger.warning("CSV export truncated at %d records for jobs", _EXPORT_LIMIT)
 
     def _fmt_date(val, fmt):
         if not val:
@@ -155,10 +170,15 @@ async def export_jobs_csv(
             buf.truncate(0)
             buf.seek(0)
 
+    response_headers = {"Content-Disposition": "attachment; filename=jobs_export.csv"}
+    if truncated:
+        response_headers["X-Export-Truncated"] = "true"
+        response_headers["X-Export-Warning"] = f"Results capped at {_EXPORT_LIMIT} records"
+
     return StreamingResponse(
         csv_generator(),
         media_type="text/csv",
-        headers={"Content-Disposition": "attachment; filename=jobs_export.csv"},
+        headers=response_headers,
     )
 
 
@@ -186,5 +206,25 @@ async def delete_job(
     job_id: str,
     current_user: dict = Depends(require_admin),
     service: JobService = Depends(get_job_service),
+    db=Depends(get_database),
 ):
+    # B-09: Before deleting the job, withdraw all pending/active applications
+    _ACTIVE_STATUSES = ["PENDING", "UNDER_REVIEW", "SHORTLISTED", "INTERVIEW_SCHEDULED"]
+
+    def _withdraw_applications():
+        withdrawn = 0
+        for status_val in _ACTIVE_STATUSES:
+            docs = db.collection("applications").where("job_id", "==", job_id).where("status", "==", status_val).get()
+            for doc in docs:
+                doc.reference.update({
+                    "status": "WITHDRAWN",
+                    "remarks": "Job posting removed",
+                })
+                withdrawn += 1
+        return withdrawn
+
+    withdrawn_count = await asyncio.to_thread(_withdraw_applications)
+    if withdrawn_count:
+        logger.info("Withdrew %d active applications for deleted job %s", withdrawn_count, job_id)
+
     await service.delete_job(job_id)

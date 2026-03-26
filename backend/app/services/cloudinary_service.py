@@ -249,6 +249,57 @@ async def upload_marksheet(file: UploadFile, user_id: str) -> str:
         )
 
 
+async def upload_offer_letter(file: UploadFile, user_id: str) -> str:
+    """
+    Upload student offer letter PDF to Cloudinary.
+    Returns the public URL.
+    """
+    if not CLOUDINARY_ENABLED:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Cloud storage not configured",
+        )
+
+    is_pdf_by_type = file.content_type in ["application/pdf", "application/x-pdf", "application/acrobat"]
+    is_pdf_by_name = (file.filename or "").lower().endswith(".pdf")
+    if not (is_pdf_by_type or is_pdf_by_name):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Only PDF files are allowed for offer letters",
+        )
+
+    content = await file.read()
+    if len(content) > MAX_FILE_SIZE:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"File size exceeds {settings.MAX_FILE_SIZE_MB}MB limit",
+        )
+
+    if not content[:4] == b"%PDF":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid file: the uploaded file does not appear to be a valid PDF",
+        )
+
+    try:
+        result = await asyncio.to_thread(
+            cloudinary.uploader.upload,
+            content,
+            folder="smarthire/offer_letters",
+            public_id=f"offer_letter_{user_id}",
+            resource_type="raw",
+            overwrite=True,
+            invalidate=True,
+        )
+        return result["secure_url"]
+    except Exception as e:
+        logger.error(f"Cloudinary offer letter upload failed: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to upload offer letter to cloud storage",
+        )
+
+
 def delete_file(file_url: str) -> bool:
     """
     Delete a file from Cloudinary given its URL.

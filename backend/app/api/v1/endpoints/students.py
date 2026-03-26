@@ -3,7 +3,14 @@ from fastapi.responses import StreamingResponse
 from typing import Optional, List
 import csv
 import io
-from app.schemas.student import StudentProfileCreate, StudentProfileUpdate, StudentProfileResponse, ResumeUploadResponse, AvatarUploadResponse, MarksheetUploadResponse
+import logging
+from app.schemas.student import (
+    StudentProfileCreate, StudentProfileUpdate, StudentProfileResponse,
+    ResumeUploadResponse, AvatarUploadResponse, MarksheetUploadResponse,
+    OfferLetterUploadResponse, PlacedStatusUpdate,
+)
+
+logger = logging.getLogger(__name__)
 from app.services.student_service import StudentService
 from app.middleware.auth import get_current_user, require_student, require_admin
 from app.utils.file_upload import save_resume, save_avatar, save_marksheet
@@ -115,13 +122,9 @@ async def list_students(
     skills: Optional[List[str]] = Query(None),
     page: int = Query(1, ge=1),
     limit: int = Query(20, ge=1, le=100),
-    current_user: dict = Depends(get_current_user),
+    _: dict = Depends(require_admin),  # B-10: enforce admin/management role via dependency
     service: StudentService = Depends(get_student_service),
 ):
-    from app.core.enums import UserRole
-    if current_user.get("role") == UserRole.STUDENT.value:
-        from app.core.exceptions import ForbiddenException
-        raise ForbiddenException("Students cannot view all student profiles")
     return await service.list_students(branch, min_cgpa, max_cgpa, skills, page, limit)
 
 
@@ -134,16 +137,22 @@ async def export_students_csv(
     service: StudentService = Depends(get_student_service),
 ):
     """Export students list as CSV file."""
-    # Get all students without pagination for full export
-    result = await service.list_students(branch, min_cgpa, max_cgpa, None, page=1, limit=10000)
+    _EXPORT_LIMIT = 10000
+    result = await service.list_students(branch, min_cgpa, max_cgpa, None, page=1, limit=_EXPORT_LIMIT)
     students = result["profiles"]
+
+    # B-11: warn if results were capped
+    truncated = len(students) >= _EXPORT_LIMIT
+    if truncated:
+        logger.warning("CSV export truncated at %d records for students", _EXPORT_LIMIT)
 
     async def csv_generator():
         buf = io.StringIO()
         writer = csv.writer(buf)
         writer.writerow([
             "ID", "Name", "Email", "Roll Number", "Branch", "Semester",
-            "CGPA", "Phone", "LinkedIn", "GitHub", "Skills", "Resume Available"
+            "CGPA", "Phone", "LinkedIn", "GitHub", "Skills", "Resume Available",
+            "Placed", "Placed Company"
         ])
         yield buf.getvalue()
         buf.truncate(0)
@@ -163,13 +172,49 @@ async def export_students_csv(
                 student.github_url or "N/A",
                 ", ".join(student.skills) if student.skills else "N/A",
                 "Yes" if student.resume_url else "No",
+                "Yes" if getattr(student, "is_placed", False) else "No",
+                getattr(student, "placed_company", None) or "N/A",
             ])
             yield buf.getvalue()
             buf.truncate(0)
             buf.seek(0)
 
+    response_headers = {"Content-Disposition": "attachment; filename=students_export.csv"}
+    if truncated:
+        response_headers["X-Export-Truncated"] = "true"
+        response_headers["X-Export-Warning"] = f"Results capped at {_EXPORT_LIMIT} records"
+
     return StreamingResponse(
         csv_generator(),
         media_type="text/csv",
-        headers={"Content-Disposition": "attachment; filename=students_export.csv"},
+        headers=response_headers,
     )
+
+
+# Feature 3 — Offer letter upload
+@router.post("/offer-letter", response_model=OfferLetterUploadResponse)
+async def upload_offer_letter(
+    file: UploadFile = File(...),
+    current_user: dict = Depends(require_student),
+    service: StudentService = Depends(get_student_service),
+):
+    """Upload a signed offer letter PDF to Cloudinary."""
+    from app.utils.file_upload import save_offer_letter
+    offer_url = await save_offer_letter(file, current_user["id"])
+    await service.update_offer_letter_url(current_user, offer_url)
+    return OfferLetterUploadResponse(
+        offer_letter_url=offer_url,
+        message="Offer letter uploaded successfully",
+    )
+
+
+# Feature 3 — Admin marks student as placed
+@router.patch("/{student_id}/placed-status", response_model=StudentProfileResponse)
+async def update_placed_status(
+    student_id: str,
+    data: PlacedStatusUpdate,
+    current_user: dict = Depends(require_admin),
+    service: StudentService = Depends(get_student_service),
+):
+    """Admin marks a student as placed at a company."""
+    return await service.update_placed_status(student_id, data, current_user)

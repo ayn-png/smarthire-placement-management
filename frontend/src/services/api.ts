@@ -1,5 +1,5 @@
 import api from "@/lib/axios";
-import { StudentProfile, Company, Job, Application, AnalyticsDashboard, InterviewQuestion, ResumeAnalysis, AppNotification, MarketJob, MarketJobsListResponse } from "@/types";
+import { StudentProfile, Company, Job, Application, AnalyticsDashboard, InterviewQuestion, ResumeAnalysis, AppNotification, MarketJob, MarketJobsListResponse, PlacementDrive, InterviewScheduleItem } from "@/types";
 
 // ---- AUTH ----
 // login / register / logout are handled by Firebase on the client.
@@ -97,6 +97,17 @@ export const studentService = {
   // CSV Export
   exportCsv: (params?: Record<string, unknown>) =>
     api.get("/students/export-csv", { params, responseType: "blob" }).then((r) => r.data),
+
+  // Feature 3 — Offer letter upload (student)
+  uploadOfferLetter: (file: File) => {
+    const form = new FormData();
+    form.append("file", file);
+    return api.post<{ offer_letter_url: string; message: string }>("/students/offer-letter", form).then((r) => r.data);
+  },
+
+  // Feature 3 — Mark student as placed (admin)
+  markPlaced: (studentId: string, data: { is_placed: boolean; placed_company?: string; placed_package?: number }) =>
+    api.patch<{ message: string }>(`/students/${studentId}/placed-status`, data).then((r) => r.data),
 };
 
 // ---- COMPANIES ----
@@ -212,6 +223,14 @@ export const interviewService = {
     api.post<{ reply: string; feedback?: string; score?: number }>("/interview/mock-chat", data).then((r) => r.data),
 };
 
+// ---- AI RANKING (Feature 5) ----
+export const aiRankingService = {
+  rankApplicants: (data: { job_id: string; application_ids: string[] }) =>
+    api.post<{ job_id: string; ranked: import("@/types").ApplicantRank[]; cached: boolean; ranked_at: string }>(
+      "/ai/rank-applicants", data
+    ).then((r) => r.data),
+};
+
 // ---- AI RESUME ANALYZER ----
 // Uses /ai/analyze-existing-resume which reads the student's already-uploaded
 // resume from disk and returns ATS score, skills, strengths, weaknesses,
@@ -232,6 +251,36 @@ export const notificationService = {
 };
 
 // ---- MARKET JOBS (external Arbeitnow listings) ----
+// Feature 2: Placement Drives
+export const placementDriveService = {
+  list: (params?: { status?: string; company_id?: string; page?: number; limit?: number }) =>
+    api.get<{ drives: PlacementDrive[]; total: number; page: number; limit: number }>("/placement-drives", { params }).then((r) => r.data),
+  get: (driveId: string) =>
+    api.get<PlacementDrive>(`/placement-drives/${driveId}`).then((r) => r.data),
+  create: (data: Partial<PlacementDrive>) =>
+    api.post<PlacementDrive>("/placement-drives", data).then((r) => r.data),
+  update: (driveId: string, data: Partial<PlacementDrive>) =>
+    api.put<PlacementDrive>(`/placement-drives/${driveId}`, data).then((r) => r.data),
+  delete: (driveId: string) =>
+    api.delete(`/placement-drives/${driveId}`),
+};
+
+// Feature 6: Interview schedule + Google Calendar
+export const calendarService = {
+  getMyInterviews: () =>
+    api.get<InterviewScheduleItem[]>("/applications/my/interviews").then((r) => r.data),
+  getGoogleAuthUrl: () =>
+    api.get<{ auth_url: string }>("/calendar/google/auth-url").then((r) => r.data),
+  googleCallback: (code: string) =>
+    api.post<{ connected: boolean; message: string }>("/calendar/google/callback", { code }).then((r) => r.data),
+  addGoogleEvent: (applicationId: string, timezone?: string) =>
+    api.post<{ event_id: string; event_url: string; message: string }>("/calendar/google/add-event", { application_id: applicationId, timezone: timezone || "Asia/Kolkata" }).then((r) => r.data),
+  disconnectGoogle: () =>
+    api.delete<{ disconnected: boolean }>("/calendar/google/disconnect").then((r) => r.data),
+  getGoogleStatus: () =>
+    api.get<{ connected: boolean; connected_at: string | null; configured: boolean }>("/calendar/google/status").then((r) => r.data),
+};
+
 export const marketJobsService = {
   list: (params?: {
     search?: string;

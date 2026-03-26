@@ -170,6 +170,20 @@ class ApplicationService:
         enriched = await self._enrich_applications_batch(apps)
         return {"applications": enriched, "total": len(enriched)}
 
+    async def get_my_interviews(self, user: dict) -> list:
+        """Return enriched applications where status == INTERVIEW_SCHEDULED and interview_date is set."""
+        user_id = user["id"]
+        docs = await asyncio.to_thread(
+            self.db.collection("applications")
+            .where("student_id", "==", user_id)
+            .where("status", "==", "INTERVIEW_SCHEDULED")
+            .get
+        )
+        apps = [_doc_to_dict(d) for d in docs if d.exists and _doc_to_dict(d).get("interview_date")]
+        apps.sort(key=lambda x: x.get("interview_date", ""))
+        enriched = await self._enrich_applications_batch(apps)
+        return enriched
+
     async def update_status(
         self,
         application_id: str,

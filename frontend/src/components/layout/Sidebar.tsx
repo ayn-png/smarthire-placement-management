@@ -10,7 +10,7 @@ import {
   LayoutDashboard, User, FileText, Briefcase, ClipboardList,
   Brain, Building2, BarChart3, LogOut, GraduationCap,
   PieChart, TrendingUp, ChevronLeft, ChevronRight, X, Users,
-  Globe,
+  Globe, CalendarDays, Calendar,
 } from "lucide-react";
 
 const STUDENT_NAV = [
@@ -19,16 +19,19 @@ const STUDENT_NAV = [
   { href: "/student/resume", label: "Resume", icon: FileText },
   { href: "/student/jobs", label: "Job Listings", icon: Briefcase },
   { href: "/student/applications", label: "My Applications", icon: ClipboardList },
+  { href: "/student/interviews", label: "Interviews", icon: Calendar },
+  { href: "/student/placement-drives", label: "Drives", icon: CalendarDays },
   { href: "/student/interview", label: "AI Interview Prep", icon: Brain },
   { href: "/student/market-jobs", label: "Market Jobs", icon: Globe },
 ];
 
 const ADMIN_NAV = [
   { href: "/admin/dashboard", label: "Dashboard", icon: LayoutDashboard },
-  { href: "/admin/students", label: "Students", icon: Users },      // Feature 3
+  { href: "/admin/students", label: "Students", icon: Users },
   { href: "/admin/companies", label: "Companies", icon: Building2 },
   { href: "/admin/jobs", label: "Jobs", icon: Briefcase },
   { href: "/admin/applications", label: "Applications", icon: ClipboardList },
+  { href: "/admin/placement-drives", label: "Placement Drives", icon: CalendarDays },
   { href: "/admin/reports", label: "Reports", icon: BarChart3 },
 ];
 

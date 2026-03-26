@@ -1,28 +1,48 @@
-from pydantic import BaseModel, field_validator, model_validator
+from pydantic import BaseModel, EmailStr, field_validator, model_validator, Field
 from typing import Optional, List
 from datetime import datetime, timezone
 from app.core.enums import JobType, JobStatus
 
 
 class CompanyCreate(BaseModel):
-    name: str
-    industry: str
-    description: Optional[str] = None
-    website: Optional[str] = None
-    location: str
-    contact_email: str
-    contact_person: Optional[str] = None
+    name: str = Field(..., min_length=2, max_length=200)
+    industry: str = Field(..., max_length=100)
+    description: Optional[str] = Field(default=None, max_length=5000)
+    website: Optional[str] = Field(default=None, max_length=500)
+    location: str = Field(..., max_length=200)
+    contact_email: EmailStr
+    contact_person: Optional[str] = Field(default=None, max_length=100)
     logo_url: Optional[str] = None
+
+    @field_validator("website")
+    @classmethod
+    def validate_website(cls, v):
+        if v is None or v == "":
+            return v
+        v = v.strip()
+        if not (v.startswith("http://") or v.startswith("https://")):
+            raise ValueError("Website must start with http:// or https://")
+        return v
 
 
 class CompanyUpdate(BaseModel):
-    industry: Optional[str] = None
-    description: Optional[str] = None
-    website: Optional[str] = None
-    location: Optional[str] = None
-    contact_email: Optional[str] = None
-    contact_person: Optional[str] = None
+    industry: Optional[str] = Field(default=None, max_length=100)
+    description: Optional[str] = Field(default=None, max_length=5000)
+    website: Optional[str] = Field(default=None, max_length=500)
+    location: Optional[str] = Field(default=None, max_length=200)
+    contact_email: Optional[EmailStr] = None
+    contact_person: Optional[str] = Field(default=None, max_length=100)
     logo_url: Optional[str] = None
+
+    @field_validator("website")
+    @classmethod
+    def validate_website(cls, v):
+        if v is None or v == "":
+            return v
+        v = v.strip()
+        if not (v.startswith("http://") or v.startswith("https://")):
+            raise ValueError("Website must start with http:// or https://")
+        return v
 
 
 class CompanyResponse(BaseModel):
@@ -39,15 +59,14 @@ class CompanyResponse(BaseModel):
     updated_at: str
 
 
-
 class JobCreate(BaseModel):
-    title: str
+    title: str = Field(..., min_length=2, max_length=200)
     company_id: str
-    description: str
-    requirements: str
+    description: str = Field(..., min_length=10, max_length=10000)
+    requirements: str = Field(..., min_length=10, max_length=5000)
     required_skills: List[str] = []
     job_type: JobType = JobType.FULL_TIME
-    location: str
+    location: str = Field(..., max_length=200)
     salary_min: Optional[float] = None
     salary_max: Optional[float] = None
     min_cgpa: float = 0.0
@@ -92,12 +111,12 @@ class JobCreate(BaseModel):
 
 
 class JobUpdate(BaseModel):
-    title: Optional[str] = None
-    description: Optional[str] = None
-    requirements: Optional[str] = None
+    title: Optional[str] = Field(default=None, max_length=200)
+    description: Optional[str] = Field(default=None, max_length=10000)
+    requirements: Optional[str] = Field(default=None, max_length=5000)
     required_skills: Optional[List[str]] = None
     job_type: Optional[JobType] = None
-    location: Optional[str] = None
+    location: Optional[str] = Field(default=None, max_length=200)
     salary_min: Optional[float] = None
     salary_max: Optional[float] = None
     min_cgpa: Optional[float] = None
@@ -105,6 +124,13 @@ class JobUpdate(BaseModel):
     openings: Optional[int] = None
     application_deadline: Optional[str] = None
     status: Optional[JobStatus] = None
+
+    @model_validator(mode="after")
+    def validate_salary_range(self):
+        if self.salary_min is not None and self.salary_max is not None:
+            if self.salary_min > self.salary_max:
+                raise ValueError("Minimum salary cannot exceed maximum salary")
+        return self
 
 
 class JobResponse(BaseModel):

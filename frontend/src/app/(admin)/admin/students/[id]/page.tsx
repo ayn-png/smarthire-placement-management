@@ -4,14 +4,15 @@ import { useParams, useRouter } from "next/navigation";
 import {
   ArrowLeft, Mail, Phone, GraduationCap, Star, MapPin,
   Linkedin, Github, FileText, User, BookOpen, Award, Eye, EyeOff,
+  BadgeCheck, ExternalLink, AlertCircle,
 } from "lucide-react";
-import { motion } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
 import Card from "@/components/ui/Card";
 import Button from "@/components/ui/Button";
 import LoadingSpinner from "@/components/ui/LoadingSpinner";
 import { studentService } from "@/services/api";
 import { StudentProfile } from "@/types";
-import { getFileUrl } from "@/lib/utils";
+import { getFileUrl, extractErrorMsg } from "@/lib/utils";
 import { FadeIn, StaggerContainer, StaggerItem } from "@/components/ui/Animations";
 
 export default function AdminStudentDetailPage() {
@@ -21,6 +22,10 @@ export default function AdminStudentDetailPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [showResume, setShowResume] = useState(false);
+  const [showPlacedModal, setShowPlacedModal] = useState(false);
+  const [placedForm, setPlacedForm] = useState({ placed_company: "", placed_package: "" });
+  const [placedSaving, setPlacedSaving] = useState(false);
+  const [placedError, setPlacedError] = useState("");
 
   useEffect(() => {
     studentService
@@ -41,6 +46,25 @@ export default function AdminStudentDetailPage() {
       </div>
     );
 
+  async function handleMarkPlaced() {
+    setPlacedSaving(true);
+    setPlacedError("");
+    try {
+      await studentService.markPlaced(id, {
+        is_placed: true,
+        placed_company: placedForm.placed_company || undefined,
+        placed_package: placedForm.placed_package ? parseFloat(placedForm.placed_package) : undefined,
+      });
+      const updated = await studentService.getStudentById(id);
+      setProfile(updated);
+      setShowPlacedModal(false);
+    } catch (err) {
+      setPlacedError(extractErrorMsg(err, "Failed to mark as placed"));
+    } finally {
+      setPlacedSaving(false);
+    }
+  }
+
   const initials = profile.full_name
     ? profile.full_name.split(" ").map((w) => w[0]).slice(0, 2).join("").toUpperCase()
     : "?";
@@ -51,17 +75,29 @@ export default function AdminStudentDetailPage() {
   return (
     <div className="space-y-6">
       <FadeIn>
-        <div className="flex items-center gap-3">
-          <button
-            onClick={() => router.back()}
-            className="w-9 h-9 rounded-xl border border-surface-200 dark:border-surface-700 flex items-center justify-center hover:bg-surface-100 dark:hover:bg-surface-700 transition-colors"
-          >
-            <ArrowLeft className="w-4 h-4 text-surface-600 dark:text-surface-400" />
-          </button>
-          <div>
-            <h1 className="text-2xl font-bold text-surface-900 dark:text-white">Student Profile</h1>
-            <p className="text-surface-500 dark:text-surface-400 text-sm">Full profile view (admin)</p>
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => router.back()}
+              className="w-9 h-9 rounded-xl border border-surface-200 dark:border-surface-700 flex items-center justify-center hover:bg-surface-100 dark:hover:bg-surface-700 transition-colors"
+            >
+              <ArrowLeft className="w-4 h-4 text-surface-600 dark:text-surface-400" />
+            </button>
+            <div>
+              <h1 className="text-2xl font-bold text-surface-900 dark:text-white">Student Profile</h1>
+              <p className="text-surface-500 dark:text-surface-400 text-sm">Full profile view (admin)</p>
+            </div>
           </div>
+          {!profile.is_placed && (
+            <Button variant="primary" onClick={() => { setPlacedForm({ placed_company: "", placed_package: "" }); setPlacedError(""); setShowPlacedModal(true); }}>
+              <BadgeCheck className="w-4 h-4 mr-2" /> Mark as Placed
+            </Button>
+          )}
+          {profile.is_placed && (
+            <span className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400 rounded-full text-sm font-medium">
+              <BadgeCheck className="w-4 h-4" /> Placed
+            </span>
+          )}
         </div>
       </FadeIn>
 
@@ -183,6 +219,22 @@ export default function AdminStudentDetailPage() {
           </StaggerItem>
         )}
 
+        {/* ── Placement Status ──────────────────────────────────────────────── */}
+        {profile.is_placed && (
+          <StaggerItem>
+            <Card title="Placement Status">
+              <div className="flex items-center gap-4 p-4 bg-emerald-50 dark:bg-emerald-950/30 rounded-xl border border-emerald-200 dark:border-emerald-800/50">
+                <BadgeCheck className="w-8 h-8 text-emerald-600 dark:text-emerald-400 flex-shrink-0" />
+                <div>
+                  <p className="text-sm font-semibold text-emerald-700 dark:text-emerald-400">Student is placed</p>
+                  {profile.placed_company && <p className="text-sm text-emerald-600 dark:text-emerald-500 mt-0.5">Company: {profile.placed_company}</p>}
+                  {profile.placed_package && <p className="text-sm text-emerald-600 dark:text-emerald-500">Package: ₹{profile.placed_package} LPA</p>}
+                </div>
+              </div>
+            </Card>
+          </StaggerItem>
+        )}
+
         {/* ── Links & Resume ────────────────────────────────────────────────── */}
         <StaggerItem>
           <Card title="Links & Documents">
@@ -217,7 +269,13 @@ export default function AdminStudentDetailPage() {
                     <Github className="w-4 h-4" /> GitHub
                   </a>
                 )}
-                {!resumeUrl && !(profile as StudentProfile & { linkedin_url?: string }).linkedin_url && !(profile as StudentProfile & { github_url?: string }).github_url && (
+                {profile.offer_letter_url && (
+                  <a href={profile.offer_letter_url} target="_blank" rel="noopener noreferrer"
+                    className="flex items-center gap-2 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-medium rounded-xl transition-colors shadow-sm">
+                    <ExternalLink className="w-4 h-4" /> Offer Letter
+                  </a>
+                )}
+                {!resumeUrl && !(profile as StudentProfile & { linkedin_url?: string }).linkedin_url && !(profile as StudentProfile & { github_url?: string }).github_url && !profile.offer_letter_url && (
                   <p className="text-sm text-surface-400 dark:text-surface-500">No links or resume uploaded</p>
                 )}
               </div>
@@ -237,6 +295,65 @@ export default function AdminStudentDetailPage() {
           </Card>
         </StaggerItem>
       </StaggerContainer>
+
+      {/* Mark as Placed Modal */}
+      <AnimatePresence>
+        {showPlacedModal && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4"
+            onClick={(e) => e.target === e.currentTarget && setShowPlacedModal(false)}
+          >
+            <motion.div
+              initial={{ scale: 0.95, y: 20 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 0.95, y: 20 }}
+              className="bg-white dark:bg-surface-800 rounded-2xl p-6 w-full max-w-sm shadow-xl"
+            >
+              <h2 className="text-lg font-bold text-surface-900 dark:text-white mb-1">Mark as Placed</h2>
+              <p className="text-sm text-surface-500 dark:text-surface-400 mb-4">
+                Record placement details for <span className="font-medium text-surface-700 dark:text-surface-300">{profile.full_name}</span>.
+              </p>
+              {placedError && (
+                <div className="flex items-center gap-2 p-3 bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800/50 rounded-xl text-sm text-red-700 dark:text-red-400 mb-3">
+                  <AlertCircle className="w-4 h-4 flex-shrink-0" />{placedError}
+                </div>
+              )}
+              <div className="space-y-3">
+                <div>
+                  <label className="text-sm font-medium text-surface-700 dark:text-surface-300">Company Name</label>
+                  <input
+                    value={placedForm.placed_company}
+                    onChange={(e) => setPlacedForm({ ...placedForm, placed_company: e.target.value })}
+                    className="mt-1 w-full px-3 py-2 border border-surface-300 dark:border-surface-600 rounded-xl text-sm bg-white dark:bg-surface-700 text-surface-900 dark:text-surface-100 focus:outline-none focus:ring-2 focus:ring-primary-500"
+                    placeholder="e.g. Google, Infosys..."
+                  />
+                </div>
+                <div>
+                  <label className="text-sm font-medium text-surface-700 dark:text-surface-300">Package (LPA)</label>
+                  <input
+                    type="number"
+                    min={0}
+                    step={0.1}
+                    value={placedForm.placed_package}
+                    onChange={(e) => setPlacedForm({ ...placedForm, placed_package: e.target.value })}
+                    className="mt-1 w-full px-3 py-2 border border-surface-300 dark:border-surface-600 rounded-xl text-sm bg-white dark:bg-surface-700 text-surface-900 dark:text-surface-100 focus:outline-none focus:ring-2 focus:ring-primary-500"
+                    placeholder="e.g. 12.5"
+                  />
+                </div>
+              </div>
+              <div className="flex gap-3 mt-5">
+                <Button variant="secondary" fullWidth onClick={() => setShowPlacedModal(false)}>Cancel</Button>
+                <Button variant="primary" fullWidth onClick={handleMarkPlaced} loading={placedSaving}>
+                  Confirm Placed
+                </Button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

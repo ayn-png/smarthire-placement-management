@@ -55,6 +55,15 @@ class Settings(BaseSettings):
     # Internal secret for Next.js → FastAPI server-to-server calls
     INTERNAL_API_SECRET: str = "change-this-internal-secret"
 
+    # Notification limits
+    NOTIFICATION_BATCH_LIMIT: int = 500   # Max students notified per new job posting
+    NOTIFY_NEW_JOBS_EMAIL: bool = False   # Set True to also send email on new job
+
+    # Google OAuth (for Google Calendar integration)
+    GOOGLE_OAUTH_CLIENT_ID: str = ""
+    GOOGLE_OAUTH_CLIENT_SECRET: str = ""
+    GOOGLE_OAUTH_REDIRECT_URI: str = "http://localhost:3000/student/interviews/google-callback"
+
     # Sentry Error Tracking (optional)
     SENTRY_DSN: str = ""
     SENTRY_ENVIRONMENT: str = "development"

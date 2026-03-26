@@ -1,6 +1,9 @@
-from pydantic import BaseModel, Field
-from typing import Optional, List
+from pydantic import BaseModel, Field, field_validator
+from typing import Optional, List, Literal
 from app.core.enums import ApplicationStatus
+
+# B-19: Constrained interview type enum
+InterviewType = Literal["IN_PERSON", "VIRTUAL", "PHONE"]
 
 
 class ApplicationCreate(BaseModel):
@@ -10,11 +13,36 @@ class ApplicationCreate(BaseModel):
 
 class ApplicationStatusUpdate(BaseModel):
     status: ApplicationStatus
-    remarks: Optional[str] = None
+    remarks: Optional[str] = Field(default=None, max_length=2000)
     interview_date: Optional[str] = None
-    interview_link: Optional[str] = None
-    interview_type: Optional[str] = None    # e.g. "TECHNICAL", "HR", "MANAGERIAL"
-    interview_location: Optional[str] = None  # Physical address or "Online"
+    interview_link: Optional[str] = Field(default=None, max_length=500)
+    interview_type: Optional[InterviewType] = None    # B-19: must be IN_PERSON, VIRTUAL, or PHONE
+    interview_location: Optional[str] = Field(default=None, max_length=500)
+
+    @field_validator("interview_link")
+    @classmethod
+    def validate_interview_link(cls, v):
+        if v is None or v == "":
+            return v
+        v = v.strip()
+        if not (v.startswith("http://") or v.startswith("https://")):
+            raise ValueError("interview_link must be a valid URL (http:// or https://)")
+        return v
+
+    @field_validator("interview_date")
+    @classmethod
+    def validate_interview_date(cls, v):
+        if v is None or v == "":
+            return v
+        # Accept ISO 8601 datetime strings: YYYY-MM-DD or YYYY-MM-DDTHH:MM:SS
+        from datetime import datetime
+        for fmt in ("%Y-%m-%dT%H:%M:%S", "%Y-%m-%dT%H:%M", "%Y-%m-%d"):
+            try:
+                datetime.strptime(v.rstrip("Z").split(".")[0], fmt)
+                return v
+            except ValueError:
+                continue
+        raise ValueError("interview_date must be an ISO 8601 datetime (e.g. 2025-06-15T10:00:00)")
 
 
 class ApplicationResponse(BaseModel):
@@ -32,8 +60,8 @@ class ApplicationResponse(BaseModel):
     remarks: Optional[str] = None
     interview_date: Optional[str] = None
     interview_link: Optional[str] = None
-    interview_type: Optional[str] = None        # e.g. "TECHNICAL", "HR", "MANAGERIAL"
-    interview_location: Optional[str] = None    # Physical address or "Online"
+    interview_type: Optional[str] = None        # e.g. "IN_PERSON", "VIRTUAL", "PHONE"
+    interview_location: Optional[str] = None
     resume_url: Optional[str] = None
     applied_at: str
     updated_at: str
@@ -49,9 +77,10 @@ class ApplicationFilterParams(BaseModel):
 
 # Feature 9 — Bulk update schemas
 class BulkStatusUpdate(BaseModel):
-    application_ids: List[str]
+    # B-07: cap at 100 application IDs per request
+    application_ids: List[str] = Field(..., min_length=1, max_length=100)
     status: ApplicationStatus
-    remarks: Optional[str] = None
+    remarks: Optional[str] = Field(default=None, max_length=2000)
 
     class Config:
         json_schema_extra = {

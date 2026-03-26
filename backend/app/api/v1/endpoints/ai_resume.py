@@ -19,19 +19,22 @@ import os
 import asyncio
 import logging
 import tempfile
+import json as _json
+from datetime import datetime, timezone
 from typing import List, Optional
 import httpx
 
 from fastapi import APIRouter, Depends, HTTPException, status, Request
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 
-from app.middleware.auth import require_student
+from app.middleware.auth import require_student, require_admin
 from app.db.database import get_database
 from app.services.student_service import StudentService
 from app.services.ai_resume_service import analyze_resume_text
 from app.utils.file_upload import BASE_DIR
+from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -429,3 +432,197 @@ async def analyze_existing_resume(
                         f.write("\n")
                 except Exception:
                     pass  # Don't let logging failure crash the response
+
+
+# ── Feature 5: AI Candidate Ranking ──────────────────────────────────────────
+
+class RankingRequest(BaseModel):
+    job_id: str
+    application_ids: List[str] = Field(..., min_length=1, max_length=50)
+
+
+class ApplicantRankItem(BaseModel):
+    application_id: str
+    student_name: str
+    score: int
+    strengths: List[str] = []
+    gaps: List[str] = []
+    cgpa: Optional[float] = None
+
+
+class RankingResponse(BaseModel):
+    job_id: str
+    ranked: List[ApplicantRankItem]
+    cached: bool
+    ranked_at: str
+
+
+_RANKING_CACHE_TTL_HOURS = 24
+
+
+@router.post("/rank-applicants", response_model=RankingResponse)
+async def rank_applicants(
+    body: RankingRequest,
+    current_user: dict = Depends(require_admin),
+    db=Depends(get_database),
+):
+    """
+    AI-powered ranking of applicants for a given job.
+    Fetches each applicant's profile, builds an OpenAI prompt, and returns
+    a ranked list sorted by score descending. Results are cached in Firestore
+    for 24 hours (keyed by job_id).
+    """
+    # 1. Check cache
+    cache_ref = db.collection("ai_rankings").document(body.job_id)
+    cache_doc = await asyncio.to_thread(cache_ref.get)
+    if cache_doc.exists:
+        cache_data = cache_doc.to_dict() or {}
+        ranked_at_raw = cache_data.get("ranked_at")
+        if ranked_at_raw:
+            try:
+                ranked_at = datetime.fromisoformat(ranked_at_raw)
+                if ranked_at.tzinfo is None:
+                    ranked_at = ranked_at.replace(tzinfo=timezone.utc)
+                age_hours = (datetime.now(timezone.utc) - ranked_at).total_seconds() / 3600
+                if age_hours < _RANKING_CACHE_TTL_HOURS:
+                    return RankingResponse(
+                        job_id=body.job_id,
+                        ranked=[ApplicantRankItem(**r) for r in cache_data.get("ranked", [])],
+                        cached=True,
+                        ranked_at=ranked_at_raw,
+                    )
+            except Exception:
+                pass  # Expired or malformed cache — re-rank
+
+    # 2. Fetch job details
+    job_doc = await asyncio.to_thread(db.collection("jobs").document(body.job_id).get)
+    if not job_doc.exists:
+        raise HTTPException(status_code=404, detail="Job not found")
+    job = job_doc.to_dict() or {}
+    job_title = job.get("title", "the position")
+    required_skills = job.get("required_skills", [])
+    job_description = job.get("description", "")
+
+    # 3. Fetch applications + student profiles
+    applicants = []
+    for app_id in body.application_ids:
+        try:
+            app_doc = await asyncio.to_thread(db.collection("applications").document(app_id).get)
+            if not app_doc.exists:
+                continue
+            app_data = app_doc.to_dict() or {}
+            student_id = app_data.get("student_id", "")
+            profile_doc = await asyncio.to_thread(db.collection("student_profiles").document(student_id).get)
+            profile = profile_doc.to_dict() if profile_doc.exists else {}
+            applicants.append({
+                "application_id": app_id,
+                "student_name": profile.get("full_name", "Unknown"),
+                "skills": profile.get("skills", []),
+                "cgpa": profile.get("cgpa"),
+                "branch": profile.get("branch", ""),
+            })
+        except Exception:
+            pass
+
+    if not applicants:
+        raise HTTPException(status_code=400, detail="No valid applicants found for ranking")
+
+    # 4. Build AI prompt
+    applicants_text = "\n".join([
+        f"- ID: {a['application_id']}, Name: {a['student_name']}, "
+        f"CGPA: {a['cgpa'] or 'N/A'}, Skills: {', '.join(a['skills']) or 'none'}"
+        for a in applicants
+    ])
+
+    prompt = f"""You are an expert recruiter evaluating candidates for a job position.
+
+Job Title: {job_title}
+Required Skills: {', '.join(required_skills) or 'Not specified'}
+Job Description: {job_description[:500] if job_description else 'Not provided'}
+
+Candidates:
+{applicants_text}
+
+Rank each candidate from 0-100 based on skill match, CGPA, and overall fit.
+Return ONLY a JSON array (no markdown, no code blocks) with objects containing:
+- "application_id": string (exact ID from input)
+- "score": integer 0-100
+- "strengths": list of 1-3 short strength strings
+- "gaps": list of 1-2 short gap strings
+
+Example: [{{"application_id": "abc123", "score": 85, "strengths": ["Strong Python skills"], "gaps": ["Missing SQL"]}}]"""
+
+    # 5. Call OpenAI
+    if not settings.OPENAI_API_KEY and not settings.OPENROUTER_API_KEY:
+        raise HTTPException(status_code=503, detail="AI ranking service not configured. Please set OPENAI_API_KEY.")
+
+    api_key = settings.OPENAI_API_KEY or settings.OPENROUTER_API_KEY
+    base_url = "https://api.openai.com/v1" if settings.OPENAI_API_KEY else "https://openrouter.ai/api/v1"
+    model = "gpt-4o-mini" if settings.OPENAI_API_KEY else "openai/gpt-4o-mini"
+
+    try:
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            response = await client.post(
+                f"{base_url}/chat/completions",
+                headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+                json={
+                    "model": model,
+                    "messages": [{"role": "user", "content": prompt}],
+                    "temperature": 0.3,
+                    "max_tokens": 1000,
+                },
+            )
+            response.raise_for_status()
+            content = response.json()["choices"][0]["message"]["content"].strip()
+    except httpx.HTTPStatusError as exc:
+        logger.error("OpenAI ranking call failed: %s", exc)
+        raise HTTPException(status_code=502, detail="AI ranking service error. Please try again.")
+    except Exception as exc:
+        logger.error("Unexpected ranking error: %s", exc)
+        raise HTTPException(status_code=500, detail="AI ranking failed unexpectedly.")
+
+    # 6. Parse AI response
+    try:
+        # Strip markdown code fences if present
+        clean = content.strip()
+        if clean.startswith("```"):
+            clean = clean.split("```")[1]
+            if clean.startswith("json"):
+                clean = clean[4:]
+        raw_ranked = _json.loads(clean)
+    except Exception:
+        logger.error("Could not parse AI ranking response: %s", content[:200])
+        raise HTTPException(status_code=502, detail="AI returned an unparseable response. Please try again.")
+
+    # Build lookup by application_id for profile data
+    profile_map = {a["application_id"]: a for a in applicants}
+
+    ranked = []
+    for item in raw_ranked:
+        app_id = item.get("application_id", "")
+        profile_info = profile_map.get(app_id, {})
+        ranked.append(ApplicantRankItem(
+            application_id=app_id,
+            student_name=profile_info.get("student_name", item.get("student_name", "Unknown")),
+            score=max(0, min(100, int(item.get("score", 0)))),
+            strengths=item.get("strengths", [])[:3],
+            gaps=item.get("gaps", [])[:2],
+            cgpa=profile_info.get("cgpa"),
+        ))
+    ranked.sort(key=lambda x: x.score, reverse=True)
+
+    # 7. Cache result
+    now_iso = datetime.now(timezone.utc).isoformat()
+    try:
+        await asyncio.to_thread(
+            cache_ref.set,
+            {
+                "job_id": body.job_id,
+                "ranked": [r.model_dump() for r in ranked],
+                "ranked_at": now_iso,
+            },
+        )
+    except Exception as e:
+        logger.warning("Failed to cache ranking: %s", e)
+
+    return RankingResponse(job_id=body.job_id, ranked=ranked, cached=False, ranked_at=now_iso)

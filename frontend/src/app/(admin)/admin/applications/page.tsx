@@ -1,12 +1,12 @@
 "use client";
 import { useEffect, useState, Fragment } from "react";
-import { ClipboardList, ChevronDown, Download } from "lucide-react";
+import { ClipboardList, ChevronDown, Download, Sparkles, X } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import Button from "@/components/ui/Button";
 import LoadingSpinner from "@/components/ui/LoadingSpinner";
 import Pagination from "@/components/ui/Pagination";        // Feature 2
-import { applicationService, jobService } from "@/services/api";
-import { Application, Job } from "@/types";
+import { applicationService, jobService, aiRankingService } from "@/services/api";
+import { Application, Job, ApplicantRank } from "@/types";
 import { formatDate, getStatusColor, extractErrorMsg } from "@/lib/utils";
 import { FadeIn } from "@/components/ui/Animations";
 
@@ -33,6 +33,9 @@ export default function AdminApplicationsPage() {
   const [bulkStatus, setBulkStatus] = useState("SHORTLISTED");
   const [bulkUpdating, setBulkUpdating] = useState(false);
   const [exporting, setExporting] = useState(false);
+  // Feature 5 — AI Ranking
+  const [ranking, setRanking] = useState(false);
+  const [rankResult, setRankResult] = useState<{ ranked: ApplicantRank[]; cached: boolean; ranked_at: string } | null>(null);
 
   // When filters change: reset to page 1 and load in one shot (avoids cascade double-render)
   useEffect(() => {
@@ -148,6 +151,22 @@ export default function AdminApplicationsPage() {
     }
   }
 
+  async function handleRankApplicants() {
+    if (!filterJob) return;
+    const ids = applications.map((a) => a.id);
+    if (ids.length === 0) { alert("No applicants to rank. Apply a job filter first."); return; }
+    if (ids.length > 50) { alert("Ranking supports up to 50 applicants at a time. Please filter further."); return; }
+    setRanking(true);
+    try {
+      const res = await aiRankingService.rankApplicants({ job_id: filterJob, application_ids: ids });
+      setRankResult({ ranked: res.ranked, cached: res.cached, ranked_at: res.ranked_at });
+    } catch (err: unknown) {
+      alert(extractErrorMsg(err, "AI ranking failed. Check that OPENAI_API_KEY is configured."));
+    } finally {
+      setRanking(false);
+    }
+  }
+
   if (loading) return <LoadingSpinner className="h-96" size="lg" />;
 
   return (
@@ -163,9 +182,16 @@ export default function AdminApplicationsPage() {
               <p className="text-surface-500 dark:text-surface-400 text-sm">{total} applications</p>
             </div>
           </div>
-          <Button onClick={handleExportCSV} variant="secondary" disabled={exporting}>
-            <Download className="w-4 h-4" />{exporting ? "Exporting..." : "Export CSV"}
-          </Button>
+          <div className="flex gap-2">
+            {filterJob && (
+              <Button onClick={handleRankApplicants} variant="gradient" disabled={ranking}>
+                <Sparkles className="w-4 h-4 mr-1.5" />{ranking ? "Ranking..." : "AI Rank"}
+              </Button>
+            )}
+            <Button onClick={handleExportCSV} variant="secondary" disabled={exporting}>
+              <Download className="w-4 h-4" />{exporting ? "Exporting..." : "Export CSV"}
+            </Button>
+          </div>
         </div>
       </FadeIn>
 
@@ -351,6 +377,70 @@ export default function AdminApplicationsPage() {
           </div>
         </FadeIn>
       )}
+      {/* Feature 5 — AI Ranking overlay */}
+      <AnimatePresence>
+        {rankResult && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4"
+            onClick={(e) => e.target === e.currentTarget && setRankResult(null)}
+          >
+            <motion.div
+              initial={{ scale: 0.95, y: 20 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 0.95, y: 20 }}
+              className="bg-white dark:bg-surface-800 rounded-2xl w-full max-w-lg shadow-xl max-h-[80vh] flex flex-col"
+            >
+              <div className="flex items-center justify-between p-5 border-b border-surface-200 dark:border-surface-700">
+                <div>
+                  <h2 className="text-lg font-bold text-surface-900 dark:text-white flex items-center gap-2">
+                    <Sparkles className="w-5 h-5 text-primary-500" /> AI Ranking
+                  </h2>
+                  <p className="text-xs text-surface-400 dark:text-surface-500 mt-0.5">
+                    {rankResult.cached ? "Cached result" : "Fresh ranking"} · {new Date(rankResult.ranked_at).toLocaleString()}
+                  </p>
+                </div>
+                <button onClick={() => setRankResult(null)} className="p-1.5 rounded-lg hover:bg-surface-100 dark:hover:bg-surface-700 transition-colors">
+                  <X className="w-4 h-4 text-surface-500" />
+                </button>
+              </div>
+              <div className="overflow-y-auto flex-1 p-4 space-y-3">
+                {rankResult.ranked.map((r, i) => (
+                  <div key={r.application_id} className="flex items-start gap-3 p-3 bg-surface-50 dark:bg-surface-700/50 rounded-xl border border-surface-200 dark:border-surface-600">
+                    <div className="flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold text-white"
+                      style={{ background: r.score >= 80 ? "#10b981" : r.score >= 60 ? "#f59e0b" : "#ef4444" }}>
+                      {i + 1}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center justify-between gap-2">
+                        <p className="text-sm font-semibold text-surface-800 dark:text-surface-200 truncate">{r.student_name}</p>
+                        <span className="text-xs font-bold px-2 py-0.5 rounded-full flex-shrink-0"
+                          style={{ background: r.score >= 80 ? "#d1fae5" : r.score >= 60 ? "#fef3c7" : "#fee2e2", color: r.score >= 80 ? "#065f46" : r.score >= 60 ? "#92400e" : "#991b1b" }}>
+                          {r.score}/100
+                        </span>
+                      </div>
+                      {r.cgpa !== undefined && r.cgpa !== null && (
+                        <p className="text-xs text-surface-400 dark:text-surface-500">CGPA: {r.cgpa}</p>
+                      )}
+                      {r.strengths.length > 0 && (
+                        <p className="text-xs text-emerald-600 dark:text-emerald-400 mt-1">✓ {r.strengths.join(" · ")}</p>
+                      )}
+                      {r.gaps.length > 0 && (
+                        <p className="text-xs text-amber-600 dark:text-amber-400">⚠ {r.gaps.join(" · ")}</p>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <div className="p-4 border-t border-surface-200 dark:border-surface-700">
+                <Button variant="secondary" fullWidth onClick={() => setRankResult(null)}>Close</Button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
