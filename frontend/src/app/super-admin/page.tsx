@@ -47,6 +47,7 @@ export default function SuperAdminPage() {
   const [rejectingId, setRejectingId] = useState<string | null>(null);
   const [rejectReason, setRejectReason] = useState("");
   const [toast, setToast] = useState<{ msg: string; ok: boolean } | null>(null);
+  const [apiError, setApiError] = useState("");
 
   function showToast(msg: string, ok = true) {
     setToast({ msg, ok });
@@ -55,10 +56,21 @@ export default function SuperAdminPage() {
 
   async function loadRequests(statusTab = tab) {
     setLoading(true);
+    setApiError("");
     try {
       const res = await fetch(`/api/super-admin/requests?status=${statusTab}`);
-      if (res.status === 401 || res.status === 403) {
+      if (res.status === 401) {
+        // Session expired — redirect to login
         router.push("/login");
+        return;
+      }
+      if (res.status === 403) {
+        // Backend rejected our secret — configuration issue, not an auth issue
+        setApiError(
+          "Backend configuration error: SUPER_ADMIN_SECRET is not set or does not match on the Render backend service. " +
+          "Go to Render → Backend service → Environment → add SUPER_ADMIN_SECRET with the same value as in the frontend service."
+        );
+        setLoading(false);
         return;
       }
       const data = await res.json();
@@ -200,6 +212,14 @@ export default function SuperAdminPage() {
             </button>
           ))}
         </div>
+
+        {/* Config error banner */}
+        {apiError && (
+          <div className="mb-6 bg-red-900/40 border border-red-700 rounded-2xl p-4 text-red-300 text-sm">
+            <p className="font-semibold mb-1">Configuration Error</p>
+            <p className="leading-relaxed">{apiError}</p>
+          </div>
+        )}
 
         {/* Content */}
         {loading ? (

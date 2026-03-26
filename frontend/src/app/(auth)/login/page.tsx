@@ -215,9 +215,15 @@ export default function LoginPage() {
         setServerError("Popup was blocked by your browser. Redirecting to Google sign-in…");
         setTimeout(() => signInWithRedirect(auth, new GoogleAuthProvider()), 1500);
       } else if (code === "auth/unauthorized-domain") {
-        setServerError("This domain is not authorized for Google sign-in. Please contact support. (Error: unauthorized-domain)");
+        setServerError(
+          "This domain is not authorized for Google sign-in. " +
+          "Go to Firebase Console → Authentication → Settings → Authorized domains and add: smarthire-frontend-i3ww.onrender.com"
+        );
       } else if (code === "auth/internal-error") {
-        setServerError(`Google sign-in error: ${code}. Please try again or use email/password.`);
+        // Often caused by domain not added to Firebase authorized domains.
+        // Fall back to redirect flow which bypasses popup restrictions.
+        setServerError("Google sign-in popup failed. Switching to redirect mode…");
+        setTimeout(() => signInWithRedirect(auth, new GoogleAuthProvider()), 1500);
       } else {
         setServerError(`Google sign-in failed (${code || "unknown"}). Please try again.`);
       }

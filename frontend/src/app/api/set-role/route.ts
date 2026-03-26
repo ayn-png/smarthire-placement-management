@@ -116,9 +116,38 @@ export async function POST(request: NextRequest) {
     if (attempt < 2) await new Promise((r) => setTimeout(r, 1200));
   }
 
-  if (!syncOk) {
-    // Both attempts failed.  Custom claim is set — the client will call
-    // /auth/self-sync with the fresh token to finish creating the Firestore doc.
+  if (!syncOk && (role === "PLACEMENT_ADMIN" || role === "COLLEGE_MANAGEMENT")) {
+    // firebase-sync failed AND this is an admin role that needs admin_requests doc.
+    // Write directly to Firestore via Admin SDK — no INTERNAL_API_SECRET needed.
+    try {
+      const { getFirestore } = await import("firebase-admin/firestore");
+      const db = getFirestore();
+      const now = new Date();
+      await db.collection("admin_requests").doc(uid).set({
+        userId: uid,
+        email,
+        full_name: displayName,
+        requestedRole: role,
+        status: "pending",
+        createdAt: now,
+        approvedBy: null,
+        approvedAt: null,
+      }, { merge: true });
+      await db.collection("users").doc(uid).set({
+        email,
+        full_name: displayName,
+        role: "STUDENT",
+        isVerifiedAdmin: false,
+        is_active: false,
+        created_at: now,
+        updated_at: now,
+      }, { merge: true });
+      syncOk = true;
+      console.log("[set-role] admin_requests + users docs written via fallback Firestore Admin SDK.");
+    } catch (fsErr) {
+      console.error("[set-role] Fallback Firestore write also failed:", fsErr);
+    }
+  } else if (!syncOk) {
     console.error("[set-role] firebase-sync failed after 2 attempts; client will self-sync.");
   }
 
