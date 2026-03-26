@@ -195,6 +195,15 @@ async def firebase_sync(
 
     # Handle admin role requests — create pending admin_requests doc, store user as STUDENT pending approval
     if is_admin_role:
+        # Duplicate guard: don't overwrite already-approved or deleted users
+        existing_req = await asyncio.to_thread(
+            db.collection("admin_requests").document(data.firebase_uid).get
+        )
+        if existing_req.exists:
+            existing_status = (existing_req.to_dict() or {}).get("status", "")
+            if existing_status in ("approved", "deleted"):
+                return {"message": "admin_request_exists", "status": existing_status}
+
         admin_request_doc = {
             "userId": data.firebase_uid,
             "email": data.email,
@@ -834,3 +843,35 @@ async def super_admin_reject_request(
         reason,
     )
     return {"message": "rejected", "user_id": user_id}
+
+
+@router.delete("/super-admin/requests/{user_id}")
+async def super_admin_delete_user(
+    user_id: str,
+    request: Request,
+    db=Depends(get_database),
+):
+    """Delete an admin user — removes from Firebase Auth and Firestore. Super admin only."""
+    _check_super_admin_secret(request)
+
+    # 1. Delete from Firebase Auth (non-fatal if user doesn't exist)
+    try:
+        from app.core.firebase_init import get_firebase_auth
+        fb_auth = get_firebase_auth()
+        await asyncio.to_thread(fb_auth.delete_user, user_id)
+    except Exception:
+        pass  # User may not exist in Firebase Auth; continue cleanup
+
+    # 2. Delete Firestore user doc
+    await asyncio.to_thread(db.collection("users").document(user_id).delete)
+
+    # 3. Mark admin_requests as "deleted" (keep for audit trail)
+    try:
+        await asyncio.to_thread(
+            db.collection("admin_requests").document(user_id).update,
+            {"status": "deleted", "deletedAt": utcnow()},
+        )
+    except Exception:
+        pass  # Doc may not exist; non-fatal
+
+    return {"message": "deleted", "user_id": user_id}

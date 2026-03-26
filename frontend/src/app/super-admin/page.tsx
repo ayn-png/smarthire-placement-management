@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   GraduationCap, LogOut, CheckCircle2, XCircle, Clock,
-  Users, RefreshCw, ChevronDown,
+  Users, RefreshCw, ChevronDown, Trash2,
 } from "lucide-react";
 
 interface AdminRequest {
@@ -87,6 +87,13 @@ export default function SuperAdminPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab]);
 
+  // Auto-refresh every 20s so new signups appear without manual action
+  useEffect(() => {
+    const interval = setInterval(() => loadRequests(tab), 20_000);
+    return () => clearInterval(interval);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tab]);
+
   async function handleApprove(req: AdminRequest) {
     setActionLoading(req.id);
     try {
@@ -124,6 +131,21 @@ export default function SuperAdminPage() {
       loadRequests(tab);
     } catch {
       showToast("Failed to reject request", false);
+    } finally {
+      setActionLoading(null);
+    }
+  }
+
+  async function handleDelete(req: AdminRequest) {
+    if (!confirm(`Permanently delete ${req.full_name}? This will remove their Firebase account and cannot be undone.`)) return;
+    setActionLoading(req.id);
+    try {
+      const res = await fetch(`/api/super-admin/${req.id}/delete`, { method: "DELETE" });
+      if (!res.ok) throw new Error("Failed");
+      showToast(`${req.full_name} deleted.`);
+      loadRequests(tab);
+    } catch {
+      showToast("Failed to delete user", false);
     } finally {
       setActionLoading(null);
     }
@@ -273,32 +295,44 @@ export default function SuperAdminPage() {
                     )}
                   </div>
 
-                  {/* Actions — only for pending */}
-                  {req.status === "pending" && (
-                    <div className="flex items-center gap-2 flex-shrink-0">
+                  {/* Actions */}
+                  <div className="flex items-center gap-2 flex-shrink-0">
+                    {req.status === "pending" && (
+                      <>
+                        <button
+                          disabled={actionLoading === req.id}
+                          onClick={() => handleApprove(req)}
+                          className="flex items-center gap-1.5 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white text-sm rounded-xl font-medium transition-colors"
+                        >
+                          <CheckCircle2 className="w-4 h-4" />
+                          {actionLoading === req.id ? "..." : "Approve"}
+                        </button>
+                        <button
+                          disabled={actionLoading === req.id}
+                          onClick={() =>
+                            setRejectingId(rejectingId === req.id ? null : req.id)
+                          }
+                          className="flex items-center gap-1.5 px-4 py-2 bg-red-900/40 hover:bg-red-900/70 border border-red-800 text-red-300 text-sm rounded-xl font-medium transition-colors"
+                        >
+                          <XCircle className="w-4 h-4" />
+                          Reject
+                          <ChevronDown
+                            className={`w-3 h-3 transition-transform ${rejectingId === req.id ? "rotate-180" : ""}`}
+                          />
+                        </button>
+                      </>
+                    )}
+                    {req.status === "approved" && (
                       <button
                         disabled={actionLoading === req.id}
-                        onClick={() => handleApprove(req)}
-                        className="flex items-center gap-1.5 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white text-sm rounded-xl font-medium transition-colors"
+                        onClick={() => handleDelete(req)}
+                        className="flex items-center gap-1.5 px-4 py-2 bg-red-900/40 hover:bg-red-900/70 border border-red-800 text-red-300 text-sm rounded-xl font-medium transition-colors disabled:opacity-50"
                       >
-                        <CheckCircle2 className="w-4 h-4" />
-                        {actionLoading === req.id ? "..." : "Approve"}
+                        <Trash2 className="w-4 h-4" />
+                        {actionLoading === req.id ? "..." : "Delete"}
                       </button>
-                      <button
-                        disabled={actionLoading === req.id}
-                        onClick={() =>
-                          setRejectingId(rejectingId === req.id ? null : req.id)
-                        }
-                        className="flex items-center gap-1.5 px-4 py-2 bg-red-900/40 hover:bg-red-900/70 border border-red-800 text-red-300 text-sm rounded-xl font-medium transition-colors"
-                      >
-                        <XCircle className="w-4 h-4" />
-                        Reject
-                        <ChevronDown
-                          className={`w-3 h-3 transition-transform ${rejectingId === req.id ? "rotate-180" : ""}`}
-                        />
-                      </button>
-                    </div>
-                  )}
+                    )}
+                  </div>
                 </div>
 
                 {/* Reject reason input */}
