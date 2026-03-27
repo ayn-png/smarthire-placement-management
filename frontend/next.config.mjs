@@ -71,12 +71,20 @@ const nextConfig = {
     ];
   },
   async rewrites() {
-    return [
-      {
-        source: "/api/:path*",
-        destination: `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"}/api/:path*`,
-      },
-    ];
+    // IMPORTANT: Use `fallback` so Next.js checks its own API routes first
+    // (e.g. /api/super-admin/[userId]/approve|reject|delete).
+    // Default array (`afterFiles`) intercepts dynamic routes before Next.js
+    // resolves them, causing 404s on FastAPI for routes it doesn't own.
+    return {
+      beforeFiles: [],
+      afterFiles: [],
+      fallback: [
+        {
+          source: "/api/:path*",
+          destination: `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"}/api/:path*`,
+        },
+      ],
+    };
   },
 };
 

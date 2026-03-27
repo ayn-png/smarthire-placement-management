@@ -774,21 +774,25 @@ async def super_admin_approve_request(
     fb_auth = get_firebase_auth()
 
     # Set Firebase custom claim to the actual requested role
-    await asyncio.to_thread(fb_auth.set_custom_user_claims, user_id, {"role": requested_role})
+    try:
+        await asyncio.to_thread(fb_auth.set_custom_user_claims, user_id, {"role": requested_role})
+    except Exception as _e:
+        import logging
+        logging.getLogger(__name__).warning(f"[super-admin/approve] set_custom_user_claims failed for {user_id}: {_e}")
 
-    # Update user doc
-    await asyncio.to_thread(db.collection("users").document(user_id).update, {
+    # Upsert user doc — use set(merge=True) so it works even if firebase-sync never ran
+    await asyncio.to_thread(db.collection("users").document(user_id).set, {
         "role": requested_role,
         "isVerifiedAdmin": True,
         "is_active": True,
         "updated_at": now,
-    })
+    }, True)  # merge=True
 
     # Fetch request data for email
     req_doc = await asyncio.to_thread(db.collection("admin_requests").document(user_id).get)
     req_data = req_doc.to_dict() or {} if req_doc.exists else {}
 
-    # Update admin_requests doc
+    # Update admin_requests doc (update is fine — doc always exists at this point)
     await asyncio.to_thread(db.collection("admin_requests").document(user_id).update, {
         "status": "approved",
         "approvedBy": "super_admin",
@@ -830,17 +834,17 @@ async def super_admin_reject_request(
         "rejectionReason": reason,
     })
 
-    # Mark user inactive
-    await asyncio.to_thread(db.collection("users").document(user_id).update, {
+    # Mark user inactive — use set(merge=True) in case user doc doesn't exist
+    await asyncio.to_thread(db.collection("users").document(user_id).set, {
         "is_active": False,
         "updated_at": now,
-    })
+    }, True)  # merge=True
 
     background_tasks.add_task(
         send_admin_rejected_email,
         req_data.get("email", ""),
         req_data.get("full_name", ""),
-        reason,
+        reason or "No reason provided",
     )
     return {"message": "rejected", "user_id": user_id}
 

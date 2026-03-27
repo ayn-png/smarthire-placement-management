@@ -17,13 +17,13 @@ export async function POST(
 
     const now = new Date();
 
-    // 2. Update Firestore user doc
-    await db.collection("users").doc(userId).update({
+    // 2. Upsert Firestore user doc — set(merge) handles missing docs (firebase-sync may have failed)
+    await db.collection("users").doc(userId).set({
       role: requestedRole,
       isVerifiedAdmin: true,
       is_active: true,
       updated_at: now,
-    });
+    }, { merge: true });
 
     // 3. Fetch request data for email
     const reqDoc = await db.collection("admin_requests").doc(userId).get();
