@@ -1,23 +1,23 @@
 /**
  * Firebase Admin SDK singleton for Next.js API routes.
- * Import getAdminApp(), getAdminAuth(), getAdminDb() from here.
+ * Import getAdminAuth(), getAdminDb() from here.
  *
  * Requires one of:
  *   FIREBASE_SERVICE_ACCOUNT_JSON  – full JSON string (production / Render)
  *   FIREBASE_SERVICE_ACCOUNT_PATH  – path to JSON file (local dev)
+ *
+ * Uses a promise-based lock so concurrent callers (e.g. Promise.all) never
+ * call initializeApp() twice, avoiding the "duplicate-app" error.
  */
 
-let _initialized = false;
+// Single promise shared by all concurrent callers during initialization
+let _initPromise: Promise<void> | null = null;
 
-async function ensureInitialized() {
-  if (_initialized) return;
-
+async function _doInit(): Promise<void> {
   const { getApps, initializeApp, cert } = await import("firebase-admin/app");
 
-  if (getApps().length > 0) {
-    _initialized = true;
-    return;
-  }
+  // Another module (e.g. set-role/route.ts) may have already initialized
+  if (getApps().length > 0) return;
 
   const json = process.env.FIREBASE_SERVICE_ACCOUNT_JSON;
   const path = process.env.FIREBASE_SERVICE_ACCOUNT_PATH;
@@ -34,8 +34,13 @@ async function ensureInitialized() {
       "Set FIREBASE_SERVICE_ACCOUNT_JSON or FIREBASE_SERVICE_ACCOUNT_PATH."
     );
   }
+}
 
-  _initialized = true;
+async function ensureInitialized() {
+  if (!_initPromise) {
+    _initPromise = _doInit();
+  }
+  await _initPromise;
 }
 
 export async function getAdminAuth() {

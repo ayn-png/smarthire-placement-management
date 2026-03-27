@@ -16,22 +16,36 @@ export async function POST(
     // 1. Fetch request data for email
     const reqDoc = await db.collection("admin_requests").doc(userId).get();
     const reqData = reqDoc.exists ? (reqDoc.data() ?? {}) : {};
+    const adminEmail: string = reqData.email ?? "";
+    const adminName: string = reqData.full_name ?? "";
 
-    // 2. Update admin_requests status
-    await db.collection("admin_requests").doc(userId).update({
-      status: "rejected",
-      rejectionReason: reason,
-      approvedBy: "super_admin",
-      approvedAt: now,
-    });
+    // 2. Update admin_requests status (update if exists, set if not)
+    if (reqDoc.exists) {
+      await db.collection("admin_requests").doc(userId).update({
+        status: "rejected",
+        rejectionReason: reason,
+        approvedBy: "super_admin",
+        approvedAt: now,
+      });
+    } else {
+      await db.collection("admin_requests").doc(userId).set({
+        userId,
+        status: "rejected",
+        rejectionReason: reason,
+        approvedBy: "super_admin",
+        approvedAt: now,
+      });
+    }
 
-    // 3. Update user doc
-    await db.collection("users").doc(userId).update({
-      is_active: false,
-      updated_at: now,
-    }).catch(() => {
-      // User doc might not exist if firebase-sync never ran — ok
-    });
+    // 3. Update user doc to inactive (non-fatal — doc may not exist for test data)
+    try {
+      await db.collection("users").doc(userId).set(
+        { is_active: false, updated_at: now },
+        { merge: true }
+      );
+    } catch (userErr) {
+      console.warn("[super-admin/reject] user doc update failed (non-fatal):", userErr);
+    }
 
     // 4. Send rejection email via backend (non-fatal)
     try {
@@ -44,13 +58,14 @@ export async function POST(
         },
         body: JSON.stringify({ reason }),
       });
-    } catch {
-      // Non-fatal
+    } catch (emailErr) {
+      console.warn("[super-admin/reject] Backend email call failed (non-fatal):", emailErr);
     }
 
-    return NextResponse.json({ message: "rejected", user_id: userId, email: reqData.email });
+    return NextResponse.json({ message: "rejected", user_id: userId, email: adminEmail, name: adminName });
   } catch (err) {
-    console.error("[super-admin/reject] Error:", err);
-    return NextResponse.json({ error: "Failed to reject request" }, { status: 500 });
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error("[super-admin/reject] Error:", msg);
+    return NextResponse.json({ error: "Failed to reject request", detail: msg }, { status: 500 });
   }
 }

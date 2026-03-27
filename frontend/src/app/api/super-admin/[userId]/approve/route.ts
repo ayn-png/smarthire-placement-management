@@ -10,31 +10,53 @@ export async function POST(
     const body = await request.json().catch(() => ({}));
     const requestedRole: string = body.requestedRole ?? "PLACEMENT_ADMIN";
 
-    const [auth, db] = await Promise.all([getAdminAuth(), getAdminDb()]);
-
-    // 1. Set Firebase custom claim to the actual requested role
-    await auth.setCustomUserClaims(userId, { role: requestedRole });
-
+    const db = await getAdminDb();
     const now = new Date();
 
-    // 2. Upsert Firestore user doc — set(merge) handles missing docs (firebase-sync may have failed)
-    await db.collection("users").doc(userId).set({
-      role: requestedRole,
-      isVerifiedAdmin: true,
-      is_active: true,
-      updated_at: now,
-    }, { merge: true });
-
-    // 3. Fetch request data for email
+    // 1. Fetch request data (for email + role info)
     const reqDoc = await db.collection("admin_requests").doc(userId).get();
     const reqData = reqDoc.exists ? (reqDoc.data() ?? {}) : {};
+    const adminEmail: string = reqData.email ?? "";
+    const adminName: string = reqData.full_name ?? "";
 
-    // 4. Mark admin_requests as approved
-    await db.collection("admin_requests").doc(userId).update({
-      status: "approved",
-      approvedBy: "super_admin",
-      approvedAt: now,
-    });
+    // 2. Set Firebase custom claim (non-fatal — user may not exist in Auth for test data)
+    try {
+      const auth = await getAdminAuth();
+      await auth.setCustomUserClaims(userId, { role: requestedRole });
+    } catch (claimErr) {
+      console.warn(
+        `[super-admin/approve] setCustomUserClaims skipped for ${userId}:`,
+        claimErr instanceof Error ? claimErr.message : claimErr
+      );
+    }
+
+    // 3. Upsert Firestore user doc — set(merge) handles missing docs
+    await db.collection("users").doc(userId).set(
+      {
+        role: requestedRole,
+        isVerifiedAdmin: true,
+        is_active: true,
+        updated_at: now,
+      },
+      { merge: true }
+    );
+
+    // 4. Mark admin_requests as approved (update if exists, set if not)
+    if (reqDoc.exists) {
+      await db.collection("admin_requests").doc(userId).update({
+        status: "approved",
+        approvedBy: "super_admin",
+        approvedAt: now,
+      });
+    } else {
+      await db.collection("admin_requests").doc(userId).set({
+        userId,
+        status: "approved",
+        approvedBy: "super_admin",
+        approvedAt: now,
+        requestedRole,
+      });
+    }
 
     // 5. Send approval email via backend (non-fatal)
     try {
@@ -47,13 +69,14 @@ export async function POST(
         },
         body: JSON.stringify({ requestedRole }),
       });
-    } catch {
-      // Non-fatal — Firestore already updated, email is best-effort
+    } catch (emailErr) {
+      console.warn("[super-admin/approve] Backend email call failed (non-fatal):", emailErr);
     }
 
-    return NextResponse.json({ message: "approved", user_id: userId, email: reqData.email });
+    return NextResponse.json({ message: "approved", user_id: userId, email: adminEmail, name: adminName });
   } catch (err) {
-    console.error("[super-admin/approve] Error:", err);
-    return NextResponse.json({ error: "Failed to approve request" }, { status: 500 });
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error("[super-admin/approve] Error:", msg);
+    return NextResponse.json({ error: "Failed to approve request", detail: msg }, { status: 500 });
   }
 }
