@@ -1,3 +1,6 @@
+// @ts-check
+import { withSentryConfig } from "@sentry/nextjs";
+
 /** @type {import('next').NextConfig} */
 const IS_PRODUCTION = process.env.NODE_ENV === "production";
 
@@ -88,4 +91,31 @@ const nextConfig = {
   },
 };
 
-export default nextConfig;
+// Wrap with Sentry only when DSN is configured — zero overhead otherwise
+const hasSentry = !!process.env.NEXT_PUBLIC_SENTRY_DSN;
+
+export default hasSentry
+  ? withSentryConfig(nextConfig, {
+      // Sentry organisation + project (set these after creating your project)
+      org: process.env.SENTRY_ORG ?? "",
+      project: process.env.SENTRY_PROJECT ?? "smarthire-frontend",
+
+      // Auth token for source map uploads (set SENTRY_AUTH_TOKEN in Render)
+      authToken: process.env.SENTRY_AUTH_TOKEN,
+
+      // Suppresses Sentry CLI output during builds
+      silent: !process.env.CI,
+
+      // Upload source maps in production for readable stack traces
+      sourcemaps: { disable: !IS_PRODUCTION },
+
+      // Automatically instrument Next.js data fetchers + API routes
+      autoInstrumentServerFunctions: true,
+      autoInstrumentMiddleware: true,
+      autoInstrumentAppDirectory: true,
+
+      // Reduce bundle size — tree-shake unused Sentry integrations
+      disableLogger: true,
+      widenClientFileUpload: true,
+    })
+  : nextConfig;
