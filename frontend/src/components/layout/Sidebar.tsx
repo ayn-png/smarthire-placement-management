@@ -10,7 +10,7 @@ import {
   LayoutDashboard, User, FileText, ClipboardList,
   Building2, BarChart3, LogOut, GraduationCap,
   PieChart, TrendingUp, ChevronLeft, ChevronRight, X, Users,
-  Globe, CalendarDays, Calendar,
+  Globe, CalendarDays, Calendar, Brain,
   Settings2,
 } from "lucide-react";
 
@@ -21,6 +21,7 @@ const STUDENT_NAV = [
   { href: "/student/placement-drives", label: "Drives", icon: CalendarDays },
   { href: "/student/applications", label: "My Applications", icon: ClipboardList },
   { href: "/student/interviews", label: "Interviews", icon: Calendar },
+  { href: "/student/interview", label: "Interview Prep", icon: Brain },
   { href: "/student/market-jobs", label: "Market Jobs", icon: Globe },
 ];
 

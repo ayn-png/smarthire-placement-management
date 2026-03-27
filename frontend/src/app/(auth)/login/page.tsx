@@ -108,8 +108,39 @@ export default function LoginPage() {
         return;
       }
 
-      const tokenResult = await userCredential.user.getIdTokenResult();
+      const tokenResult = await userCredential.user.getIdTokenResult(true); // force-refresh to pick up latest custom claims
       const role = tokenResult.claims.role as string | undefined;
+
+      // ── Pending-admin gate ────────────────────────────────────────────────
+      // Pending admins have Firebase claim "STUDENT" until super admin approves.
+      // Without this check they would be routed to /student/dashboard.
+      if (role === "STUDENT") {
+        try {
+          const checkRes = await fetch(
+            `/api/super-admin/check-pending?uid=${userCredential.user.uid}`
+          );
+          if (checkRes.ok) {
+            const checkData = await checkRes.json() as { status?: string };
+            if (checkData.status === "pending") {
+              await signOut(auth);
+              document.cookie = "__session=; path=/; expires=Thu, 01 Jan 1970 00:00:01 GMT;";
+              document.cookie = "__role=; path=/; expires=Thu, 01 Jan 1970 00:00:01 GMT;";
+              setServerError("Your account is not approved yet. Please wait for Super User approval.");
+              return;
+            }
+            if (checkData.status === "rejected") {
+              await signOut(auth);
+              document.cookie = "__session=; path=/; expires=Thu, 01 Jan 1970 00:00:01 GMT;";
+              document.cookie = "__role=; path=/; expires=Thu, 01 Jan 1970 00:00:01 GMT;";
+              setServerError("Your account request has been rejected. Please contact the portal administrator.");
+              return;
+            }
+          }
+        } catch {
+          // Non-fatal — if check fails, fall through and treat as normal student
+        }
+      }
+      // ─────────────────────────────────────────────────────────────────────
 
       // Set cookies for middleware
       document.cookie = "__session=1; path=/; SameSite=Lax";
