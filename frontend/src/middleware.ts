@@ -28,9 +28,16 @@ export default function middleware(request: NextRequest) {
 
   // Super admin route protection
   if (pathname.startsWith("/super-admin")) {
+    // Always allow the login page itself
+    if (pathname === "/super-admin/login") {
+      const saSession = request.cookies.get("__sa_session")?.value;
+      // Already logged in — redirect to dashboard
+      if (saSession) return NextResponse.redirect(new URL("/super-admin", request.url));
+      return NextResponse.next();
+    }
     const saSession = request.cookies.get("__sa_session")?.value;
     if (!saSession) {
-      return NextResponse.redirect(new URL("/login", request.url));
+      return NextResponse.redirect(new URL("/super-admin/login", request.url));
     }
     return NextResponse.next();
   }

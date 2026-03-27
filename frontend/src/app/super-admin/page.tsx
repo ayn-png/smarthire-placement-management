@@ -75,6 +75,7 @@ export default function SuperAdminPage() {
       }
       const data = await res.json();
       setRequests(data.requests ?? []);
+      if (data.error) showToast(data.error, false);
     } catch {
       showToast("Failed to load requests", false);
     } finally {

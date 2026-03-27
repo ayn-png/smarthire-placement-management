@@ -1,24 +1,35 @@
 import { NextRequest, NextResponse } from "next/server";
-
-const BACKEND_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+import { getAdminDb } from "@/lib/firebaseAdmin";
 
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const statusFilter = searchParams.get("status") ?? "pending";
 
   try {
-    const resp = await fetch(
-      `${BACKEND_URL}/api/v1/auth/super-admin/requests?status_filter=${statusFilter}`,
-      {
-        headers: {
-          "X-Super-Admin-Secret": process.env.SUPER_ADMIN_SECRET ?? "",
-        },
-        cache: "no-store",
+    const db = await getAdminDb();
+    const snap = await db
+      .collection("admin_requests")
+      .where("status", "==", statusFilter)
+      .get();
+
+    const requests = snap.docs.map((doc) => {
+      const data = doc.data();
+      // Serialize Firestore Timestamps to ISO strings
+      const serialized: Record<string, unknown> = { id: doc.id, ...data };
+      for (const [k, v] of Object.entries(serialized)) {
+        if (v && typeof v === "object" && "toDate" in v && typeof (v as { toDate: unknown }).toDate === "function") {
+          serialized[k] = (v as { toDate: () => Date }).toDate().toISOString();
+        }
       }
+      return serialized;
+    });
+
+    return NextResponse.json({ requests });
+  } catch (err) {
+    console.error("[super-admin/requests] Error:", err);
+    return NextResponse.json(
+      { error: "Failed to fetch requests. Check server logs." },
+      { status: 500 }
     );
-    const data = await resp.json();
-    return NextResponse.json(data, { status: resp.status });
-  } catch {
-    return NextResponse.json({ error: "Failed to fetch requests" }, { status: 500 });
   }
 }
