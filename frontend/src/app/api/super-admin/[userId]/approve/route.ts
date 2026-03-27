@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAdminAuth, getAdminDb } from "@/lib/firebaseAdmin";
+import { sendApprovalEmail } from "@/lib/mailer";
 
 export async function POST(
   request: NextRequest,
@@ -13,7 +14,7 @@ export async function POST(
     const db = await getAdminDb();
     const now = new Date();
 
-    // 1. Fetch request data (for email + role info)
+    // 1. Fetch request data (for email + name)
     const reqDoc = await db.collection("admin_requests").doc(userId).get();
     const reqData = reqDoc.exists ? (reqDoc.data() ?? {}) : {};
     const adminEmail: string = reqData.email ?? "";
@@ -30,18 +31,13 @@ export async function POST(
       );
     }
 
-    // 3. Upsert Firestore user doc — set(merge) handles missing docs
+    // 3. Upsert Firestore user doc
     await db.collection("users").doc(userId).set(
-      {
-        role: requestedRole,
-        isVerifiedAdmin: true,
-        is_active: true,
-        updated_at: now,
-      },
+      { role: requestedRole, isVerifiedAdmin: true, is_active: true, updated_at: now },
       { merge: true }
     );
 
-    // 4. Mark admin_requests as approved (update if exists, set if not)
+    // 4. Mark admin_requests as approved
     if (reqDoc.exists) {
       await db.collection("admin_requests").doc(userId).update({
         status: "approved",
@@ -58,30 +54,17 @@ export async function POST(
       });
     }
 
-    // 5. Send approval email via backend (non-fatal)
-    try {
-      const apiUrl = (process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000").replace(/\/$/, "");
-      const emailResp = await fetch(`${apiUrl}/api/v1/auth/super-admin/requests/${userId}/approve`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "X-Super-Admin-Secret": process.env.SUPER_ADMIN_SECRET ?? "",
-        },
-        body: JSON.stringify({ requestedRole }),
-      });
-      if (!emailResp.ok) {
-        const errBody = await emailResp.text().catch(() => "");
-        // ACTUAL ROOT CAUSE surfaced: if SUPER_ADMIN_SECRET does not match on the backend,
-        // this returns 403 and the approval email is NEVER queued.
-        // Fix: ensure SUPER_ADMIN_SECRET matches in both frontend (.env.local / Render frontend env)
-        // and backend (.env / Render backend env).
-        console.error(
-          `[super-admin/approve] Backend email endpoint returned HTTP ${emailResp.status} — ` +
-          `approval email NOT sent. Check SUPER_ADMIN_SECRET matches on both services. Body: ${errBody}`
-        );
+    // 5. Send approval email directly via nodemailer (no backend round-trip)
+    if (adminEmail) {
+      try {
+        await sendApprovalEmail(adminEmail, adminName);
+        console.log(`[super-admin/approve] Email sent to ${adminEmail}`);
+      } catch (emailErr) {
+        console.error("[super-admin/approve] Email send failed:", emailErr);
+        // Non-fatal — approval already applied in Firestore
       }
-    } catch (emailErr) {
-      console.warn("[super-admin/approve] Backend email call failed (network error):", emailErr);
+    } else {
+      console.warn(`[super-admin/approve] No email address found for userId ${userId} — skipping email`);
     }
 
     return NextResponse.json({ message: "approved", user_id: userId, email: adminEmail, name: adminName });
