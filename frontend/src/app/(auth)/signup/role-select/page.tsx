@@ -119,7 +119,7 @@ export default function RoleSelectPage() {
           </div>
           <h2 className="text-xl font-bold text-white">Request Submitted!</h2>
           <p className="text-white/60 text-sm leading-relaxed">
-            Your account is pending approval by the portal owner.
+            Your account is under review. Please wait for Super User approval.
             You will receive an email at <span className="text-primary-400 font-medium">{pendingEmail}</span> once your account is approved.
           </p>
           <div className="bg-amber-500/10 border border-amber-500/20 rounded-xl p-4 text-amber-300 text-xs">

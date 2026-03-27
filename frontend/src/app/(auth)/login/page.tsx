@@ -132,7 +132,7 @@ export default function LoginPage() {
               document.cookie = "__session=; path=/; expires=Thu, 01 Jan 1970 00:00:01 GMT;";
               document.cookie = "__role=; path=/; expires=Thu, 01 Jan 1970 00:00:01 GMT;";
               if (detail.toLowerCase().includes("pending")) {
-                setServerError("Contact the administrator of this portal to verify your account, or wait for verification. When your account is verified you will receive a confirmation email.");
+                setServerError("Your account is not approved yet. Please wait for Super User approval.");
               } else if (detail.toLowerCase().includes("reject")) {
                 setServerError(detail);
               } else {
@@ -191,7 +191,7 @@ export default function LoginPage() {
             document.cookie = "__session=; path=/; expires=Thu, 01 Jan 1970 00:00:01 GMT;";
             document.cookie = "__role=; path=/; expires=Thu, 01 Jan 1970 00:00:01 GMT;";
             if (detail.toLowerCase().includes("pending")) {
-              setServerError("Contact the administrator of this portal to verify your account, or wait for verification. When your account is verified you will receive a confirmation email.");
+              setServerError("Your account is not approved yet. Please wait for Super User approval.");
             } else if (detail.toLowerCase().includes("reject")) {
               setServerError(detail);
             } else {

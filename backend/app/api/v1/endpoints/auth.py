@@ -256,21 +256,6 @@ async def firebase_sync(
             if not existing_data.get("approval_token"):
                 await asyncio.to_thread(approval_ref.update, {"approval_token": approval_token})
 
-        # Build one-click verify URL pointing to the backend
-        _base_url = str(request.base_url).rstrip("/")
-        verify_url = f"{_base_url}/api/v1/auth/admin-requests/{data.firebase_uid}/verify?token={approval_token}"
-
-        # Notify portal owner (non-fatal)
-        if settings.OWNER_EMAIL:
-            from app.services.email_service import send_admin_approval_request_to_owner
-            background_tasks.add_task(
-                send_admin_approval_request_to_owner,
-                settings.OWNER_EMAIL,
-                data.full_name,
-                data.email,
-                verify_url,
-            )
-
         return {"message": "admin_request_created", "status": "pending"}
 
     # ── Non-admin roles (STUDENT, COMPANY, etc.) ──────────────────────────────
