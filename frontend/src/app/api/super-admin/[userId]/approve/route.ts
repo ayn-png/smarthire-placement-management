@@ -54,20 +54,32 @@ export async function POST(
       });
     }
 
-    // 5. Send approval email directly via nodemailer (no backend round-trip)
+    // 5. Send approval email — surface error in response for debugging
+    let emailSent = false;
+    let emailError: string | null = null;
+
     if (adminEmail) {
       try {
         await sendApprovalEmail(adminEmail, adminName);
-        console.log(`[super-admin/approve] Email sent to ${adminEmail}`);
+        emailSent = true;
+        console.log(`[super-admin/approve] ✅ Email sent to ${adminEmail}`);
       } catch (emailErr) {
-        console.error("[super-admin/approve] Email send failed:", emailErr);
-        // Non-fatal — approval already applied in Firestore
+        emailError = emailErr instanceof Error ? emailErr.message : String(emailErr);
+        console.error(`[super-admin/approve] ❌ Email FAILED to ${adminEmail}:`, emailError);
       }
     } else {
-      console.warn(`[super-admin/approve] No email address found for userId ${userId} — skipping email`);
+      emailError = `No email address found for userId ${userId}`;
+      console.warn(`[super-admin/approve] ${emailError}`);
     }
 
-    return NextResponse.json({ message: "approved", user_id: userId, email: adminEmail, name: adminName });
+    return NextResponse.json({
+      message: "approved",
+      user_id: userId,
+      email: adminEmail,
+      name: adminName,
+      emailSent,
+      emailError,
+    });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     console.error("[super-admin/approve] Error:", msg);

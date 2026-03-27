@@ -104,7 +104,16 @@ export default function SuperAdminPage() {
         body: JSON.stringify({ requestedRole: req.requestedRole }),
       });
       if (!res.ok) throw new Error("Failed");
-      showToast(`${req.full_name} approved successfully!`);
+      const data = await res.json() as { emailSent?: boolean; emailError?: string };
+      if (data.emailSent) {
+        showToast(`${req.full_name} approved! Notification email sent.`);
+      } else {
+        // Approval succeeded but email failed — show warning with reason
+        showToast(
+          `${req.full_name} approved! ⚠️ Email failed: ${data.emailError ?? "unknown error"}`,
+          false
+        );
+      }
       loadRequests(tab);
     } catch {
       showToast("Failed to approve request", false);
@@ -126,7 +135,15 @@ export default function SuperAdminPage() {
         body: JSON.stringify({ reason: rejectReason }),
       });
       if (!res.ok) throw new Error("Failed");
-      showToast(`${req.full_name} rejected.`);
+      const data = await res.json() as { emailSent?: boolean; emailError?: string };
+      if (data.emailSent) {
+        showToast(`${req.full_name} rejected. Notification email sent.`);
+      } else {
+        showToast(
+          `${req.full_name} rejected. ⚠️ Email failed: ${data.emailError ?? "unknown error"}`,
+          false
+        );
+      }
       setRejectingId(null);
       setRejectReason("");
       loadRequests(tab);

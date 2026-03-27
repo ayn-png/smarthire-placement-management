@@ -48,20 +48,32 @@ export async function POST(
       console.warn("[super-admin/reject] user doc update failed (non-fatal):", userErr);
     }
 
-    // 4. Send rejection email directly via nodemailer (no backend round-trip)
+    // 4. Send rejection email — surface error in response for debugging
+    let emailSent = false;
+    let emailError: string | null = null;
+
     if (adminEmail) {
       try {
         await sendRejectionEmail(adminEmail, adminName, reason);
-        console.log(`[super-admin/reject] Email sent to ${adminEmail}`);
+        emailSent = true;
+        console.log(`[super-admin/reject] ✅ Email sent to ${adminEmail}`);
       } catch (emailErr) {
-        console.error("[super-admin/reject] Email send failed:", emailErr);
-        // Non-fatal — rejection already applied in Firestore
+        emailError = emailErr instanceof Error ? emailErr.message : String(emailErr);
+        console.error(`[super-admin/reject] ❌ Email FAILED to ${adminEmail}:`, emailError);
       }
     } else {
-      console.warn(`[super-admin/reject] No email address found for userId ${userId} — skipping email`);
+      emailError = `No email address found for userId ${userId}`;
+      console.warn(`[super-admin/reject] ${emailError}`);
     }
 
-    return NextResponse.json({ message: "rejected", user_id: userId, email: adminEmail, name: adminName });
+    return NextResponse.json({
+      message: "rejected",
+      user_id: userId,
+      email: adminEmail,
+      name: adminName,
+      emailSent,
+      emailError,
+    });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     console.error("[super-admin/reject] Error:", msg);
