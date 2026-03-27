@@ -50,7 +50,7 @@ export async function POST(
     // 4. Send rejection email via backend (non-fatal)
     try {
       const apiUrl = (process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000").replace(/\/$/, "");
-      await fetch(`${apiUrl}/api/v1/auth/super-admin/requests/${userId}/reject`, {
+      const emailResp = await fetch(`${apiUrl}/api/v1/auth/super-admin/requests/${userId}/reject`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -58,8 +58,19 @@ export async function POST(
         },
         body: JSON.stringify({ reason }),
       });
+      if (!emailResp.ok) {
+        const errBody = await emailResp.text().catch(() => "");
+        // ACTUAL ROOT CAUSE surfaced: if SUPER_ADMIN_SECRET does not match on the backend,
+        // this returns 403 and the rejection email is NEVER queued.
+        // Fix: ensure SUPER_ADMIN_SECRET matches in both frontend (.env.local / Render frontend env)
+        // and backend (.env / Render backend env).
+        console.error(
+          `[super-admin/reject] Backend email endpoint returned HTTP ${emailResp.status} — ` +
+          `rejection email NOT sent. Check SUPER_ADMIN_SECRET matches on both services. Body: ${errBody}`
+        );
+      }
     } catch (emailErr) {
-      console.warn("[super-admin/reject] Backend email call failed (non-fatal):", emailErr);
+      console.warn("[super-admin/reject] Backend email call failed (network error):", emailErr);
     }
 
     return NextResponse.json({ message: "rejected", user_id: userId, email: adminEmail, name: adminName });
