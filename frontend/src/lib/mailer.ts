@@ -71,7 +71,7 @@ export async function sendApprovalEmail(
         You can now log in and access your admin dashboard.
       </p>
       <div style="text-align:center;margin:32px 0;">
-        <a href="${appUrl}/login"
+        <a href="${appUrl}/auth/refresh"
            style="background:#2563eb;color:#fff;padding:12px 28px;border-radius:6px;text-decoration:none;font-weight:bold;font-size:15px;display:inline-block;">
           Login to SmartHire →
         </a>
