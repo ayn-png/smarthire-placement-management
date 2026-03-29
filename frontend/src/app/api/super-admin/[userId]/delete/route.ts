@@ -5,6 +5,10 @@ export async function DELETE(
   _request: NextRequest,
   { params }: { params: { userId: string } }
 ) {
+  // Require super-admin session cookie
+  if (!_request.cookies.get("__sa_session")?.value) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
   const userId = params.userId;
   try {
     const [auth, db] = await Promise.all([getAdminAuth(), getAdminDb()]);

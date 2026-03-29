@@ -1,7 +1,18 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAdminDb } from "@/lib/firebaseAdmin";
 
+function requireSuperAdminSession(request: NextRequest): NextResponse | null {
+  const session = request.cookies.get("__sa_session")?.value;
+  if (!session) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  return null;
+}
+
 export async function GET(request: NextRequest) {
+  const authError = requireSuperAdminSession(request);
+  if (authError) return authError;
+
   const { searchParams } = new URL(request.url);
   const statusFilter = searchParams.get("status") ?? "pending";
 

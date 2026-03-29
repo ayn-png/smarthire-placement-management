@@ -473,6 +473,7 @@ async def approve_admin_request(
     await asyncio.to_thread(user_ref.update, {
         "approval_status": "APPROVED",
         "is_active": True,
+        "isVerifiedAdmin": True,
         "approval_reviewed_at": now,
         "approval_reviewed_by": current_user.get("id"),
         "updated_at": now,
@@ -486,12 +487,19 @@ async def approve_admin_request(
         "reviewed_by": current_user.get("id"),
     })
 
-    # Re-assert Firebase custom claim
+    # Re-assert Firebase custom claim using the role from the approval request doc
     try:
         from app.core.firebase_init import get_firebase_auth
         fb_auth = get_firebase_auth()
+        # Determine the actual role the user requested
+        req_ref = db.collection("admin_approval_requests").document(user_id)
+        req_snap = await asyncio.to_thread(req_ref.get)
+        req_data = req_snap.to_dict() or {} if req_snap.exists else {}
+        approved_role = req_data.get("requestedRole") or UserRole.PLACEMENT_ADMIN.value
+        # Also update the role field in users doc if it differs from current
+        await asyncio.to_thread(user_ref.update, {"role": approved_role})
         await asyncio.to_thread(
-            fb_auth.set_custom_user_claims, user_id, {"role": UserRole.PLACEMENT_ADMIN.value}
+            fb_auth.set_custom_user_claims, user_id, {"role": approved_role}
         )
     except Exception as e:
         import logging

@@ -10,7 +10,7 @@ from app.schemas.application import (
     BulkStatusUpdate, BulkStatusUpdateResponse,
 )
 from app.services.application_service import ApplicationService
-from app.middleware.auth import get_current_user, require_student, require_admin
+from app.middleware.auth import get_current_user, require_student, require_admin, require_admin_or_management
 from app.db.database import get_database
 
 logger = logging.getLogger(__name__)
@@ -75,7 +75,7 @@ async def list_applications(
     to_date: Optional[str] = Query(None, description="Filter applications up to this date (YYYY-MM-DD)"),
     page: int = Query(1, ge=1),
     limit: int = Query(20, ge=1, le=100),
-    current_user: dict = Depends(require_admin),
+    current_user: dict = Depends(require_admin_or_management),
     service: ApplicationService = Depends(get_app_service),
 ):
     # B-14: validate date format before passing to service
@@ -91,7 +91,7 @@ async def export_applications_csv(
     branch: Optional[str] = Query(None),
     from_date: Optional[str] = Query(None),
     to_date: Optional[str] = Query(None),
-    current_user: dict = Depends(require_admin),
+    current_user: dict = Depends(require_admin_or_management),
     service: ApplicationService = Depends(get_app_service),
 ):
     """Export applications list as CSV file (streamed row-by-row)."""
@@ -163,7 +163,7 @@ async def export_applications_csv(
 async def bulk_update_status(
     data: BulkStatusUpdate,
     background_tasks: BackgroundTasks,
-    current_user: dict = Depends(require_admin),
+    current_user: dict = Depends(require_admin_or_management),
     service: ApplicationService = Depends(get_app_service),
 ):
     """Update status of multiple applications in one request."""

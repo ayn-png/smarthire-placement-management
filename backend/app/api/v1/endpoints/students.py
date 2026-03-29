@@ -13,7 +13,7 @@ from app.schemas.student import (
 
 logger = logging.getLogger(__name__)
 from app.services.student_service import StudentService
-from app.middleware.auth import get_current_user, require_student, require_admin
+from app.middleware.auth import get_current_user, require_student, require_admin, require_admin_or_management
 from app.utils.file_upload import save_resume, save_avatar, save_marksheet, save_marksheet_10th, save_marksheet_12th, save_aadhar_doc
 from app.db.database import get_database
 from app.db.helpers import utcnow
@@ -110,7 +110,7 @@ async def upload_marksheet(
 @router.get("/profile/{profile_id}", response_model=StudentProfileResponse)
 async def get_student_profile(
     profile_id: str,
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(require_admin_or_management),
     service: StudentService = Depends(get_student_service),
 ):
     return await service.get_profile_by_id(profile_id)
@@ -124,7 +124,7 @@ async def list_students(
     skills: Optional[List[str]] = Query(None),
     page: int = Query(1, ge=1),
     limit: int = Query(20, ge=1, le=100),
-    _: dict = Depends(require_admin),  # B-10: enforce admin/management role via dependency
+    _: dict = Depends(require_admin_or_management),
     service: StudentService = Depends(get_student_service),
 ):
     return await service.list_students(branch, min_cgpa, max_cgpa, skills, page, limit)
@@ -135,7 +135,7 @@ async def get_student_documents(
     has_resume: Optional[bool] = Query(None),
     has_offer_letter: Optional[bool] = Query(None),
     has_aadhar: Optional[bool] = Query(None),
-    current_user: dict = Depends(require_admin),
+    current_user: dict = Depends(require_admin_or_management),
     service: StudentService = Depends(get_student_service),
 ):
     """Admin: Get all students with their document upload status."""
@@ -185,7 +185,7 @@ async def export_students_csv(
     branch: Optional[str] = Query(None),
     min_cgpa: Optional[float] = Query(None),
     max_cgpa: Optional[float] = Query(None),
-    current_user: dict = Depends(require_admin),
+    current_user: dict = Depends(require_admin_or_management),
     service: StudentService = Depends(get_student_service),
 ):
     """Export students list as CSV file."""

@@ -27,9 +27,9 @@ export const authService = {
   resetPasswordWithToken: (data: { token: string; new_password: string }) =>
     api.post<{ message: string }>("/auth/reset-password-confirm", data).then((r) => r.data),
 
-  getAdminRequests: (status?: string) => api.get("/api/v1/auth/admin-requests", { params: status ? { status } : {} }),
-  approveAdmin: (userId: string) => api.patch(`/api/v1/auth/admin-requests/${userId}/approve`),
-  rejectAdmin: (userId: string, reason: string) => api.patch(`/api/v1/auth/admin-requests/${userId}/reject`, { reason }),
+  getAdminRequests: (status?: string) => api.get("/auth/admin-requests", { params: status ? { status } : {} }),
+  approveAdmin: (userId: string) => api.patch(`/auth/admin-requests/${userId}/approve`),
+  rejectAdmin: (userId: string, reason: string) => api.patch(`/auth/admin-requests/${userId}/reject`, { reason }),
 
   // Admin user management
   listUsers: (params?: { role?: string; is_active?: boolean; page?: number; limit?: number }) =>
@@ -116,27 +116,21 @@ export const studentService = {
   uploadMarksheet10th: async (file: File) => {
     const form = new FormData();
     form.append("file", file);
-    const { data } = await api.post("/students/marksheet-10th", form, {
-      headers: { "Content-Type": "multipart/form-data" },
-    });
+    const { data } = await api.post("/students/marksheet-10th", form);
     return data;
   },
 
   uploadMarksheet12th: async (file: File) => {
     const form = new FormData();
     form.append("file", file);
-    const { data } = await api.post("/students/marksheet-12th", form, {
-      headers: { "Content-Type": "multipart/form-data" },
-    });
+    const { data } = await api.post("/students/marksheet-12th", form);
     return data;
   },
 
   uploadAadharDoc: async (file: File) => {
     const form = new FormData();
     form.append("file", file);
-    const { data } = await api.post("/students/aadhar-doc", form, {
-      headers: { "Content-Type": "multipart/form-data" },
-    });
+    const { data } = await api.post("/students/aadhar-doc", form);
     return data;
   },
 };
@@ -352,41 +346,39 @@ export const marketJobsService = {
 // ---- ROUNDS ----
 export const roundService = {
   list: (params?: { application_id?: string; job_id?: string }) =>
-    api.get("/api/v1/rounds/", { params }),
-  create: (data: any) => api.post("/api/v1/rounds/", data),
+    api.get("/rounds/", { params }),
+  create: (data: any) => api.post("/rounds/", data),
   updateResult: (roundId: string, data: { result: string; admin_notes?: string }) =>
-    api.patch(`/api/v1/rounds/${roundId}/result`, data),
-  update: (roundId: string, data: any) => api.put(`/api/v1/rounds/${roundId}`, data),
-  delete: (roundId: string) => api.delete(`/api/v1/rounds/${roundId}`),
-  getMyUpcoming: () => api.get("/api/v1/rounds/my/upcoming"),
+    api.patch(`/rounds/${roundId}/result`, data),
+  update: (roundId: string, data: any) => api.put(`/rounds/${roundId}`, data),
+  delete: (roundId: string) => api.delete(`/rounds/${roundId}`),
+  getMyUpcoming: () => api.get("/rounds/my/upcoming"),
 };
 
 // ---- SETTINGS ----
 export const settingsService = {
-  get: () => api.get("/api/v1/settings/"),
-  update: (data: any) => api.patch("/api/v1/settings/", data),
+  get: () => api.get("/settings/"),
+  update: (data: any) => api.patch("/settings/", data),
 };
 
 // ---- ADMIN PROFILE ----
 export const adminProfileService = {
-  get: () => api.get("/api/v1/admin-profile/me"),
-  create: (data: any) => api.post("/api/v1/admin-profile/", data),
-  update: (data: any) => api.put("/api/v1/admin-profile/me", data),
+  get: () => api.get("/admin-profile/me"),
+  create: (data: any) => api.post("/admin-profile/", data),
+  update: (data: any) => api.put("/admin-profile/me", data),
   uploadAvatar: (file: File) => {
     const fd = new FormData();
     fd.append("file", file);
-    return api.post("/api/v1/admin-profile/avatar", fd, {
-      headers: { "Content-Type": "multipart/form-data" },
-    });
+    return api.post("/admin-profile/avatar", fd);
   },
 };
 
 // ---- VERIFICATION ----
 export const verificationService = {
-  submit: (doc_url: string) => api.post("/api/v1/verification/submit", { doc_url }),
-  getMyStatus: () => api.get("/api/v1/verification/my-status"),
-  listPending: (params?: any) => api.get("/api/v1/verification/pending", { params }),
-  listAll: (status?: string) => api.get("/api/v1/verification/all", { params: status ? { status } : {} }),
+  submit: (doc_url: string) => api.post("/verification/submit", { doc_url }),
+  getMyStatus: () => api.get("/verification/my-status"),
+  listPending: (params?: any) => api.get("/verification/pending", { params }),
+  listAll: (status?: string) => api.get("/verification/all", { params: status ? { status } : {} }),
   review: (studentId: string, data: { status: string; admin_notes?: string }) =>
-    api.patch(`/api/v1/verification/${studentId}/review`, data),
+    api.patch(`/verification/${studentId}/review`, data),
 };

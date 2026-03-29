@@ -6,6 +6,10 @@ export async function POST(
   request: NextRequest,
   { params }: { params: { userId: string } }
 ) {
+  // Require super-admin session cookie
+  if (!request.cookies.get("__sa_session")?.value) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
   const userId = params.userId;
   try {
     const body = await request.json().catch(() => ({}));

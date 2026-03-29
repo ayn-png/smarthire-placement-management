@@ -12,7 +12,7 @@ from app.schemas.verification import (
     VerificationResponse,
 )
 from app.services.verification_service import VerificationService
-from app.middleware.auth import get_current_user, require_student, require_admin
+from app.middleware.auth import get_current_user, require_student, require_admin, require_admin_or_management
 from app.db.database import get_database
 
 router = APIRouter(prefix="/verification", tags=["Verification"])
@@ -56,7 +56,7 @@ async def get_my_verification_status(
 async def list_pending_verifications(
     page: int = Query(1, ge=1),
     limit: int = Query(20, ge=1, le=100),
-    _: dict = Depends(require_admin),
+    _: dict = Depends(require_admin_or_management),
     service: VerificationService = Depends(get_verification_service),
 ):
     """Admin: List all pending verifications."""
@@ -68,7 +68,7 @@ async def list_all_verifications(
     status: Optional[str] = Query(None),
     page: int = Query(1, ge=1),
     limit: int = Query(20, ge=1, le=100),
-    _: dict = Depends(require_admin),
+    _: dict = Depends(require_admin_or_management),
     service: VerificationService = Depends(get_verification_service),
 ):
     """Admin: List all verifications with optional status filter."""
@@ -79,7 +79,7 @@ async def list_all_verifications(
 async def review_verification(
     student_id: str,
     data: VerificationReviewRequest,
-    current_user: dict = Depends(require_admin),
+    current_user: dict = Depends(require_admin_or_management),
     service: VerificationService = Depends(get_verification_service),
 ):
     """Admin: Approve or reject a student's identity verification."""
