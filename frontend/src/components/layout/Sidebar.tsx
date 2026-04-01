@@ -11,7 +11,7 @@ import {
   Building2, BarChart3, LogOut, GraduationCap,
   PieChart, TrendingUp, ChevronLeft, ChevronRight, X, Users,
   Globe, CalendarDays, Calendar, Brain,
-  Settings2,
+  Settings2, BellRing, AlertCircle, Trophy
 } from "lucide-react";
 
 const STUDENT_NAV = [
@@ -23,6 +23,7 @@ const STUDENT_NAV = [
   { href: "/student/interviews", label: "Interviews", icon: Calendar },
   { href: "/student/interview", label: "Interview Prep", icon: Brain },
   { href: "/student/market-jobs", label: "Market Jobs", icon: Globe },
+  { href: "/student/complaints", label: "Complaints", icon: AlertCircle },
 ];
 
 const ADMIN_NAV = [
@@ -36,6 +37,9 @@ const ADMIN_NAV = [
 
 const MANAGEMENT_NAV = [
   { href: "/management/dashboard",      label: "Dashboard",      icon: LayoutDashboard },
+  { href: "/management/announcements",  label: "Announcements",  icon: BellRing },
+  { href: "/management/complaints",     label: "Complaints",     icon: AlertCircle },
+  { href: "/management/leaderboard",    label: "Leaderboard",    icon: Trophy },
   { href: "/management/analytics",      label: "Analytics",      icon: PieChart },
   { href: "/management/statistics",     label: "Statistics",     icon: TrendingUp },
   { href: "/management/reports",        label: "Reports",        icon: BarChart3 },

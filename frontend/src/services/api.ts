@@ -382,3 +382,19 @@ export const verificationService = {
   review: (studentId: string, data: { status: string; admin_notes?: string }) =>
     api.patch(`/verification/${studentId}/review`, data),
 };
+
+// ---- NEW FEATURES ----
+export const announcementsService = {
+  list: (params?: { target_audience?: string; limit?: number }) => api.get("/announcements", { params }).then(r => r.data),
+  create: (data: { title: string; message: string; target_audience: string }) => api.post("/announcements", data).then(r => r.data),
+};
+
+export const complaintsService = {
+  list: (params?: { status?: string }) => api.get("/complaints", { params }).then(r => r.data),
+  create: (data: { title: string; description: string }) => api.post("/complaints", data).then(r => r.data),
+  update: (id: string, data: { status: string; solution?: string }) => api.patch(`/complaints/${id}`, data).then(r => r.data),
+};
+
+export const leaderboardService = {
+  get: (params?: { limit?: number; department?: string }) => api.get("/leaderboard", { params }).then(r => r.data),
+};

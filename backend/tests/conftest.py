@@ -5,6 +5,7 @@ All Firestore + Firebase Auth calls are mocked so tests run without
 a real Firebase project or network connection.
 """
 import asyncio
+import uuid
 import pytest
 import pytest_asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -16,6 +17,7 @@ from httpx import AsyncClient, ASGITransport
 STUDENT_UID = "test-student-uid-001"
 ADMIN_UID   = "test-admin-uid-002"
 SA_UID      = "test-super-admin-uid-003"
+CM_UID      = "test-college-management-uid-004"
 
 def _make_fake_token(uid: str, role: str) -> dict:
     return {"uid": uid, "role": role, "email": f"{role.lower()}@test.com"}
@@ -34,6 +36,8 @@ def patch_firebase():
         "fake-token-STUDENT":                 _make_fake_token(STUDENT_UID, "STUDENT"),
         "Bearer fake-token-PLACEMENT_ADMIN":  _make_fake_token(ADMIN_UID, "PLACEMENT_ADMIN"),
         "fake-token-PLACEMENT_ADMIN":         _make_fake_token(ADMIN_UID, "PLACEMENT_ADMIN"),
+        "Bearer fake-token-COLLEGE_MANAGEMENT": _make_fake_token(CM_UID, "COLLEGE_MANAGEMENT"),
+        "fake-token-COLLEGE_MANAGEMENT":      _make_fake_token(CM_UID, "COLLEGE_MANAGEMENT"),
     }
     fake_auth.verify_id_token = MagicMock(
         side_effect=lambda token, **kw: token_map.get(token, _make_fake_token(STUDENT_UID, "STUDENT"))
@@ -66,6 +70,13 @@ def patch_firebase():
             "full_name": "Test Super Admin",
             "firebase_uid": SA_UID,
         },
+        f"users/{CM_UID}": {
+            "role": "COLLEGE_MANAGEMENT",
+            "is_active": True,
+            "email": "management@test.com",
+            "full_name": "Test College Management",
+            "firebase_uid": CM_UID,
+        },
     }
 
     def _doc_ref(collection, doc_id):
@@ -92,12 +103,12 @@ def patch_firebase():
 
     def _make_collection(name):
         col = MagicMock()
-        col.document.side_effect = lambda doc_id: _doc_ref(name, doc_id)
+        col.document.side_effect = lambda doc_id=None: _doc_ref(name, doc_id or str(uuid.uuid4()))
         col.where.return_value = col
         col.order_by.return_value = col
         col.limit.return_value = col
-        col.stream.return_value = iter([])
-        col.get.return_value = []
+        col.stream.side_effect = lambda: iter(_make_doc(k) for k in _store if k.startswith(f"{name}/"))
+        col.get.side_effect = lambda: [_make_doc(k) for k in _store if k.startswith(f"{name}/")]
         return col
 
     # Patch decode_firebase_token at the middleware's import site
