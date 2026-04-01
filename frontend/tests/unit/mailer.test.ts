@@ -114,7 +114,7 @@ describe("mailer — sendApprovalEmail", () => {
     await sendApprovalEmail("admin@college.edu", "Nilesh Kumar");
 
     const body = capturedBody(fetchMock);
-    expect(body.content[0].value).toContain("/login");
+    expect(body.content[0].value).toContain("/auth/refresh");
   });
 
   it("falls back to 'Admin' when name is an email address", async () => {

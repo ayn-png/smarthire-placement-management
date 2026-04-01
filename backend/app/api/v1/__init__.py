@@ -3,7 +3,8 @@ from app.api.v1.endpoints import (
     auth, students, companies, jobs, applications, analytics,
     interview, ai_resume, notifications, resume_analyzer, multi_agent,
     health, market_jobs, placement_drives, calendar,
-    rounds, settings, admin_profile, announcements, complaints, leaderboard
+    rounds, settings, admin_profile, announcements, complaints, leaderboard,
+    verification
 )
 
 api_router = APIRouter(prefix="/api/v1")
@@ -29,3 +30,4 @@ api_router.include_router(admin_profile.router)  # Placement Admin Profile
 api_router.include_router(announcements.router) # Feature: Announcements
 api_router.include_router(complaints.router)    # Feature: Complaints/Issue System
 api_router.include_router(leaderboard.router)   # Feature: Leaderboard
+api_router.include_router(verification.router)  # Identity Verification
