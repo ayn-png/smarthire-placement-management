@@ -176,6 +176,7 @@ async def reset_password_confirm(
 # ── Firebase Sync Endpoint ─────────────────────────────────────────────────────
 
 @router.post("/firebase-sync", status_code=201)
+@limiter.limit("10/minute")
 async def firebase_sync(
     data: FirebaseSyncRequest,
     request: Request,

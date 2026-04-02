@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import { BarChart3, FileText, Sparkles, Download } from "lucide-react";
+import { toast } from "react-hot-toast";
 import { motion } from "framer-motion";
 import Card from "@/components/ui/Card";
 import Button from "@/components/ui/Button";
@@ -25,6 +26,7 @@ export default function AdminReportsPage() {
       setReports(data.reports || []);
       setTotal(data.total || 0);
     } catch {
+      toast.error("Failed to load reports");
       setReports([]);
       setTotal(0);
     } finally {
@@ -43,21 +45,21 @@ export default function AdminReportsPage() {
       a.click();
       URL.revokeObjectURL(url);
     } catch {
-      alert("Failed to export CSV");
+      toast.error("Failed to export CSV");
     } finally {
       setExporting(false);
     }
   }
 
   async function generateReport() {
-    if (!title.trim()) { alert("Enter a report title"); return; }
+    if (!title.trim()) { toast.error("Enter a report title"); return; }
     setGenerating(true);
     try {
       await analyticsService.createReport({ report_type: "PLACEMENT_SUMMARY", title });
       setTitle("");
       await load();
     } catch {
-      alert("Failed to generate report");
+      toast.error("Failed to generate report");
     } finally {
       setGenerating(false);
     }

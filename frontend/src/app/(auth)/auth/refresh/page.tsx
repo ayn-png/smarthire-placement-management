@@ -8,7 +8,6 @@ const DASHBOARD_MAP: Record<string, string> = {
   STUDENT: "/student/dashboard",
   PLACEMENT_ADMIN: "/admin/dashboard",
   COLLEGE_MANAGEMENT: "/management/dashboard",
-  COMPANY: "/company/dashboard",
 };
 
 /**

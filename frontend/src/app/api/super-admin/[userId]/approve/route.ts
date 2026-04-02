@@ -13,7 +13,10 @@ export async function POST(
   const userId = params.userId;
   try {
     const body = await request.json().catch(() => ({}));
-    const requestedRole: string = body.requestedRole ?? "PLACEMENT_ADMIN";
+    const VALID_ROLES = ["PLACEMENT_ADMIN", "COLLEGE_MANAGEMENT"];
+    const requestedRole: string = VALID_ROLES.includes(body.requestedRole)
+      ? body.requestedRole
+      : "PLACEMENT_ADMIN";
 
     const db = await getAdminDb();
     const now = new Date();

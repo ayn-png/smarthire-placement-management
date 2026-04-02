@@ -5,6 +5,11 @@ import csv
 import io
 import logging
 from datetime import datetime
+from slowapi import Limiter
+from slowapi.util import get_remote_address
+from starlette.requests import Request
+
+limiter = Limiter(key_func=get_remote_address)
 from app.schemas.application import (
     ApplicationCreate, ApplicationStatusUpdate, ApplicationResponse,
     BulkStatusUpdate, BulkStatusUpdateResponse,
@@ -38,7 +43,9 @@ def _parse_date(val: Optional[str], name: str) -> Optional[datetime]:
 
 
 @router.post("/", response_model=ApplicationResponse, status_code=201)
+@limiter.limit("20/hour")
 async def apply_for_job(
+    request: Request,
     data: ApplicationCreate,
     current_user: dict = Depends(require_student),
     service: ApplicationService = Depends(get_app_service),

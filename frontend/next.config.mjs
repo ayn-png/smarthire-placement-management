@@ -8,6 +8,17 @@ const IS_PRODUCTION = process.env.NODE_ENV === "production";
 // in a cloud deployment and pollutes the security policy.
 const DEV_BACKEND = IS_PRODUCTION ? "" : " http://localhost:8000";
 
+// Derive exact backend origin from NEXT_PUBLIC_API_URL so CSP and image
+// patterns point to the specific backend host rather than *.onrender.com.
+function parseBackend(url) {
+  if (!url) return { origin: "https://*.onrender.com", hostname: "*.onrender.com" };
+  try { const u = new URL(url); return { origin: u.origin, hostname: u.hostname }; }
+  catch { return { origin: "https://*.onrender.com", hostname: "*.onrender.com" }; }
+}
+const { origin: BACKEND_ORIGIN, hostname: BACKEND_HOSTNAME } = parseBackend(
+  process.env.NEXT_PUBLIC_API_URL
+);
+
 const securityHeaders = [
   { key: "X-Frame-Options", value: "DENY" },
   { key: "X-Content-Type-Options", value: "nosniff" },
@@ -26,7 +37,7 @@ const securityHeaders = [
       // data: needed for icon/web fonts embedded as data URIs
       "font-src 'self' https://fonts.gstatic.com data:",
       // Cloudinary for uploaded images/avatars/logos; Google profile photos; localhost only in dev
-      `img-src 'self' data: blob: https://res.cloudinary.com https://lh3.googleusercontent.com https://www.gstatic.com${DEV_BACKEND} https://*.onrender.com`,
+      `img-src 'self' data: blob: https://res.cloudinary.com https://lh3.googleusercontent.com https://www.gstatic.com${DEV_BACKEND} ${BACKEND_ORIGIN}`,
       // Firebase Auth: identitytoolkit + securetoken (token refresh)
       // Firebase Firestore: firestore.googleapis.com
       // Firebase Auth domain: *.firebaseapp.com (used for OAuth redirect flows)
@@ -38,7 +49,7 @@ const securityHeaders = [
         "https://*.firebaseapp.com " +
         "https://*.googleapis.com " +
         "https://api.smith.langchain.com " +
-        "https://*.onrender.com",
+        `${BACKEND_ORIGIN}`,
       // Firebase Auth uses an iframe for redirect-based OAuth flows.
       // accounts.google.com + apis.google.com needed for Google Sign-In popup.
       // res.cloudinary.com allows inline PDF resume viewing via <iframe>.
@@ -62,7 +73,7 @@ const nextConfig = {
       // localhost only needed in development (Render filesystem is remote)
       ...(IS_PRODUCTION ? [] : [{ protocol: "http", hostname: "localhost" }]),
       { protocol: "https", hostname: "res.cloudinary.com" },
-      { protocol: "https", hostname: "*.onrender.com" },
+      { protocol: "https", hostname: BACKEND_HOSTNAME },
     ],
   },
   async headers() {
