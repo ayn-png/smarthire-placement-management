@@ -9,7 +9,7 @@
  * Cache versioning: bump CACHE_VERSION to force cache refresh on deploy.
  */
 
-const CACHE_VERSION = "smarthire-v1";
+const CACHE_VERSION = "smarthire-v2";
 const STATIC_CACHE = `${CACHE_VERSION}-static`;
 const API_CACHE = `${CACHE_VERSION}-api`;
 
@@ -79,12 +79,17 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
-  // Static assets: cache-first
+  // Static assets: cache-first (same-origin only).
+  // Cross-origin CDN assets (Cloudinary images, Google Fonts, etc.) are skipped —
+  // the browser loads them natively and the CDN handles caching. Intercepting
+  // cross-origin fetches in the SW causes CSP connect-src violations and 503s.
   if (
-    request.destination === "script" ||
-    request.destination === "style" ||
-    request.destination === "font" ||
-    request.destination === "image"
+    isSameOrigin && (
+      request.destination === "script" ||
+      request.destination === "style" ||
+      request.destination === "font" ||
+      request.destination === "image"
+    )
   ) {
     event.respondWith(cacheFirst(request, STATIC_CACHE));
     return;
