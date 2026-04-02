@@ -8,7 +8,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import Card from "@/components/ui/Card";
 import Input from "@/components/ui/Input";
 import Button from "@/components/ui/Button";
-import { studentService, authService } from "@/services/api";
+import { studentService, authService, verificationService } from "@/services/api";
 import api from "@/lib/axios";
 import { StudentProfile } from "@/types";
 import { getFileUrl, extractErrorMsg } from "@/lib/utils";
@@ -445,7 +445,7 @@ export default function ProfilePage() {
       })
       .then(async () => {
         try {
-          const vRes = await api.get("/api/v1/verification/my-status");
+          const vRes = await verificationService.getMyStatus();
           setVerificationStatus(vRes.data?.status ?? null);
         } catch { /* not verified yet */ }
       })

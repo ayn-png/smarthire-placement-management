@@ -54,21 +54,21 @@ async def list_complaints(
     db=Depends(get_database)
 ):
     """List complaints. If Student -> only their own. If Management -> all."""
-    query = db.collection("complaints").order_by("created_at", direction="DESCENDING")
-    
+    query = db.collection("complaints")
+
     if current_user.get("role") == UserRole.STUDENT.value:
         query = query.where("user_id", "==", current_user["id"])
     elif current_user.get("role") == UserRole.COLLEGE_MANAGEMENT.value:
         pass # management sees all
     else:
         raise ForbiddenException("You don't have access to complaints.")
-        
+
     if status_filter:
         query = query.where("status", "==", status_filter)
-        
+
     docs = await asyncio.to_thread(query.get)
     results = []
-    
+
     for doc in docs:
         data = doc.to_dict()
         data["id"] = doc.id
@@ -77,7 +77,8 @@ async def list_complaints(
         if isinstance(data.get("updated_at"), datetime):
             data["updated_at"] = data["updated_at"].isoformat()
         results.append(data)
-        
+
+    results.sort(key=lambda x: x.get("created_at", ""), reverse=True)
     return results
 
 @router.patch("/{complaint_id}")

@@ -49,6 +49,8 @@ const securityHeaders = [
         "https://*.firebaseapp.com " +
         "https://*.googleapis.com " +
         "https://api.smith.langchain.com " +
+        "https://res.cloudinary.com " +
+        "https://o4511120036003840.ingest.us.sentry.io " +
         `${BACKEND_ORIGIN}`,
       // Firebase Auth uses an iframe for redirect-based OAuth flows.
       // accounts.google.com + apis.google.com needed for Google Sign-In popup.

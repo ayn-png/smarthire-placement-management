@@ -88,19 +88,19 @@ async def list_announcements(
     db=Depends(get_database)
 ):
     """List announcements."""
-    query = db.collection("announcements").order_by("created_at", direction="DESCENDING").limit(limit)
-    
+    query = db.collection("announcements").limit(limit)
+
     if target_audience:
         query = query.where("target_audience", "in", [target_audience, "ALL"])
-    
+
     docs = await asyncio.to_thread(query.get)
     results = []
     for doc in docs:
         data = doc.to_dict()
         data["id"] = doc.id
-        # Convert datetime to string
         if isinstance(data.get("created_at"), datetime):
             data["created_at"] = data["created_at"].isoformat()
         results.append(data)
-        
+
+    results.sort(key=lambda x: x.get("created_at", ""), reverse=True)
     return results
