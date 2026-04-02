@@ -112,7 +112,7 @@ export default function LeaderboardPage() {
               </div>
             </motion.div>
           )}
-        </div>
+        </FadeIn>
       )}
 
       {/* Rest of Leaderboard */}
