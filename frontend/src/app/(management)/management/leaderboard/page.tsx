@@ -50,7 +50,7 @@ export default function LeaderboardPage() {
           {/* 2nd Place */}
           {topThree[1] && (
             <motion.div 
-              initial={{ opacity: 0, y: 50 }} animate={{ opacity: 1, y: 0 }} delay={0.4}
+              initial={{ opacity: 0, y: 50 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.4 }}
               className="flex flex-col items-center w-28 sm:w-36"
             >
               <div className="relative mb-3">
@@ -72,7 +72,7 @@ export default function LeaderboardPage() {
           {/* 1st Place */}
           {topThree[0] && (
             <motion.div 
-              initial={{ opacity: 0, y: 50 }} animate={{ opacity: 1, y: 0 }} delay={0.6}
+              initial={{ opacity: 0, y: 50 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.6 }}
               className="flex flex-col items-center w-32 sm:w-44 z-10 -m-4"
             >
               <div className="relative mb-3 -mt-8">
@@ -94,7 +94,7 @@ export default function LeaderboardPage() {
           {/* 3rd Place */}
           {topThree[2] && (
             <motion.div 
-              initial={{ opacity: 0, y: 50 }} animate={{ opacity: 1, y: 0 }} delay={0.8}
+              initial={{ opacity: 0, y: 50 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.8 }}
               className="flex flex-col items-center w-28 sm:w-36"
             >
               <div className="relative mb-3">
