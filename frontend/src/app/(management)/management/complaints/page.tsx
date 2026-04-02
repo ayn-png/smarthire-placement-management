@@ -149,7 +149,7 @@ export default function ManagementComplaintsPage() {
                     onChange={(e) => setSolution(e.target.value)}
                   />
                   <div className="flex justify-end gap-3">
-                    <Button variant="outline" onClick={() => setSelectedComplaint(null)}>Cancel</Button>
+                    <Button variant="ghost" onClick={() => setSelectedComplaint(null)}>Cancel</Button>
                     <Button onClick={handleResolve} disabled={submitting} className="flex items-center gap-2">
                        <CheckCircle2 className="w-4 h-4" />
                        Mark as Resolved

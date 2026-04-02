@@ -102,7 +102,7 @@ export default function StudentComplaintsPage() {
                   />
                 </div>
                 <div className="flex justify-end gap-3 pt-2">
-                  <Button variant="outline" type="button" onClick={() => setShowForm(false)}>Cancel</Button>
+                  <Button variant="ghost" type="button" onClick={() => setShowForm(false)}>Cancel</Button>
                   <Button type="submit" disabled={submitting}>
                     {submitting ? "Submitting..." : "Submit Complaint"}
                   </Button>
@@ -122,7 +122,7 @@ export default function StudentComplaintsPage() {
               <div className="text-center py-16 bg-surface-50 dark:bg-surface-800/50 rounded-2xl border border-surface-200 dark:border-surface-700/50">
                 <AlertCircle className="w-12 h-12 text-surface-400 mx-auto mb-3 opacity-50" />
                 <p className="text-surface-500 dark:text-surface-400 font-medium">You haven't raised any issues</p>
-                <Button variant="outline" className="mt-4" onClick={() => setShowForm(true)}>Raise Your First Issue</Button>
+                <Button variant="ghost" className="mt-4" onClick={() => setShowForm(true)}>Raise Your First Issue</Button>
               </div>
             ) : (
               <StaggerContainer>
