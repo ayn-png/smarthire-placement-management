@@ -3,6 +3,7 @@ import { Inter } from "next/font/google";
 import "./globals.css";
 import ThemeProvider from "@/components/providers/ThemeProvider";
 import ServiceWorkerRegistrar from "@/components/providers/ServiceWorkerRegistrar";
+import PWAInstallPrompt from "@/components/providers/PWAInstallPrompt";
 import { AuthProvider } from "@/contexts/AuthContext";
 
 const inter = Inter({
@@ -56,6 +57,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <AuthProvider>
           <ThemeProvider>
             <ServiceWorkerRegistrar />
+            <PWAInstallPrompt />
             {children}
           </ThemeProvider>
         </AuthProvider>

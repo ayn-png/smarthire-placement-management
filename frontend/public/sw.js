@@ -19,6 +19,7 @@ const PRECACHE_URLS = [
   "/favicon.svg",
   "/favicon-192x192.png",
   "/manifest.json",
+  "/offline.html",
 ];
 
 // ── Install: pre-cache critical assets ──────────────────────────────────────
@@ -95,12 +96,14 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
-  // Navigation (HTML pages): network-first
+  // Navigation (HTML pages): network-first, fall back to offline.html
   if (request.mode === "navigate") {
     event.respondWith(
-      fetch(request).catch(() => {
-        return caches.match("/") || new Response("Offline", { status: 503 });
-      })
+      fetch(request).catch(() =>
+        caches.match("/offline.html").then(
+          (cached) => cached || new Response("Offline", { status: 503 })
+        )
+      )
     );
     return;
   }
