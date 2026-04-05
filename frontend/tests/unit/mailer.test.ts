@@ -75,12 +75,12 @@ describe("mailer — sendApprovalEmail", () => {
     expect(headers["Authorization"]).toBe("Bearer SG.test-key-approval");
   });
 
-  it("sends from aalamaynn@gmail.com as SmartHire", async () => {
+  it("sends from noreply@smarthire.com as SmartHire", async () => {
     const { sendApprovalEmail } = await import("../../src/lib/mailer");
     await sendApprovalEmail("admin@college.edu", "Nilesh Kumar");
 
     const body = capturedBody(fetchMock);
-    expect(body.from.email).toBe("aalamaynn@gmail.com");
+    expect(body.from.email).toBe("noreply@smarthire.com");
     expect(body.from.name).toBe("SmartHire");
   });
 
@@ -201,12 +201,12 @@ describe("mailer — sendRejectionEmail", () => {
     expect(body.content[0].value).toContain("No specific reason provided.");
   });
 
-  it("sends from aalamaynn@gmail.com", async () => {
+  it("sends from noreply@smarthire.com", async () => {
     const { sendRejectionEmail } = await import("../../src/lib/mailer");
     await sendRejectionEmail("applicant@college.edu", "Ravi Sharma", "Test");
 
     const body = capturedBody(fetchMock);
-    expect(body.from.email).toBe("aalamaynn@gmail.com");
+    expect(body.from.email).toBe("noreply@smarthire.com");
   });
 
   it("throws if SendGrid returns 401", async () => {
