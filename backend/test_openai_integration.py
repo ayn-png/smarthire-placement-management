@@ -23,7 +23,7 @@ async def test_openai_analysis():
     # Sample resume text for testing
     sample_resume_text = """
 AYAN AALAM
-Nagpur, Maharashtra, India-440015 | aalamaynn@gmail.com | +91-9529233024 | GitHub | Linkedin
+Pune, Maharashtra, India-411001 | student@example.com | +91-9000000000 | GitHub | LinkedIn
 
 SUMMARY
 Final-year Computer Science Engineering student with strong foundation in Java, Python, and web technologies.

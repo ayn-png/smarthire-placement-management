@@ -61,7 +61,7 @@ class Settings(BaseSettings):
     SUPER_ADMIN_SECRET: str = "change-this-super-admin-secret"
 
     # Portal owner email — receives placement admin approval requests (hardcoded to portal owner)
-    OWNER_EMAIL: str = "worckbeard@gmail.com"
+    OWNER_EMAIL: str = ""
 
     # Notification limits
     NOTIFICATION_BATCH_LIMIT: int = 500   # Max students notified per new job posting

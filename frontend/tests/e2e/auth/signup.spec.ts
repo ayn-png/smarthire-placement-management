@@ -59,8 +59,8 @@ test.describe("Signup flow", () => {
 
   test("signup with existing email → shows error", async ({ page }) => {
     await page.goto("/signup");
-    // Use an email we know already exists
-    await page.fill('input[type="email"]', "worckbeard@gmail.com");
+    // Use an email we know already exists (set E2E_EXISTING_USER_EMAIL in env for a pre-registered test account)
+    await page.fill('input[type="email"]', process.env.E2E_EXISTING_USER_EMAIL ?? "");
     await page.fill('input[type="password"]', "TestPass123!");
     const confirmInput = page.locator('input[type="password"]').nth(1);
     if (await confirmInput.isVisible()) {

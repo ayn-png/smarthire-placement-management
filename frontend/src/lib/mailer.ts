@@ -13,7 +13,7 @@ function getApiKey(): string {
 function getAppUrl(): string {
   return (
     process.env.NEXT_PUBLIC_APP_URL ??
-    "https://smarthire-frontend-i3ww.onrender.com"
+    "http://localhost:3000"
   );
 }
 
@@ -30,7 +30,7 @@ async function sendMail(
     },
     body: JSON.stringify({
       personalizations: [{ to: [{ email: to }] }],
-      from: { email: "aalamaynn@gmail.com", name: "SmartHire" },
+      from: { email: process.env.SENDGRID_FROM_EMAIL ?? "noreply@smarthire.com", name: "SmartHire" },
       subject,
       content: [{ type: "text/html", value: html }],
     }),

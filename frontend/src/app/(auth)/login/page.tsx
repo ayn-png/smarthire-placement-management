@@ -247,7 +247,7 @@ export default function LoginPage() {
       } else if (code === "auth/unauthorized-domain") {
         setServerError(
           "This domain is not authorized for Google sign-in. " +
-          "Go to Firebase Console → Authentication → Settings → Authorized domains and add: smarthire-frontend-i3ww.onrender.com"
+          "Go to Firebase Console → Authentication → Settings → Authorized domains and add your deployment domain."
         );
       } else if (code === "auth/internal-error") {
         // Often caused by domain not added to Firebase authorized domains.
