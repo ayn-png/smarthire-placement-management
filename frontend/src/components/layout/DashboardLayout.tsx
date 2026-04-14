@@ -7,7 +7,8 @@ import Sidebar from "./Sidebar";
 import SearchBar from "./SearchBar";
 import ThemeToggle from "@/components/ui/ThemeToggle";
 import NotificationDropdown from "@/components/ui/NotificationDropdown"; // Feature 11
-import { motion } from "framer-motion";
+import MarketJobApplyModal from "@/components/shared/MarketJobApplyModal";
+import { motion, AnimatePresence } from "framer-motion";
 import {
   Menu,
   LayoutDashboard,
@@ -44,29 +45,41 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const pathname = usePathname();
-  const { user, role: authRole, isLoaded } = useAuth();
+  const { role: authRole } = useAuth();
+
+  // --- NEW: Market Job tracking ---
+  const [clickedJobId, setClickedJobId] = useState<string | null>(null);
+
+  // Check for return on focus or mount
+  useEffect(() => {
+    const checkTracking = () => {
+      if (typeof window === "undefined") return;
+      const stored = localStorage.getItem("market_job_clicked");
+      if (stored && !clickedJobId) {
+        setClickedJobId(stored);
+      }
+    };
+
+    checkTracking();
+    window.addEventListener("focus", checkTracking);
+    return () => window.removeEventListener("focus", checkTracking);
+  }, [clickedJobId]);
 
   // Read cookie synchronously so the correct mobile nav renders on first paint
   // without waiting for the Firebase auth callback to complete.
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
+
   const cookieRole = typeof document !== "undefined"
     ? document.cookie.match(/(?:^|;\s*)__role=([^;]+)/)?.[1]
     : undefined;
-  const role = authRole || cookieRole || "STUDENT";
+  const role = mounted ? (authRole || cookieRole || "STUDENT") : "STUDENT";
   const mobileItems = MOBILE_NAV[role] || MOBILE_NAV.STUDENT;
 
   /* Scroll to top on route change */
   useEffect(() => {
     window.scrollTo({ top: 0, behavior: "smooth" });
   }, [pathname]);
-
-  // Block rendering until Clerk session is confirmed
-  if (!isLoaded) {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-[var(--color-bg)]">
-        <div className="w-8 h-8 border-2 border-primary-500 border-t-transparent rounded-full animate-spin" />
-      </div>
-    );
-  }
 
   return (
     <div className="flex min-h-screen bg-[var(--color-bg)]">
@@ -139,6 +152,15 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           );
         })}
       </nav>
+
+      {/* Market Job Tracking Modal */}
+      {clickedJobId && (
+        <MarketJobApplyModal 
+          jobId={clickedJobId} 
+          onClose={() => setClickedJobId(null)} 
+        />
+      )}
     </div>
   );
 }
+

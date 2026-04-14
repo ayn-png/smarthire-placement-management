@@ -6,7 +6,7 @@ from slowapi.util import get_remote_address
 from typing import Optional
 from datetime import datetime, timezone
 from pydantic import BaseModel, EmailStr
-from app.schemas.auth import UserResponse, ChangePasswordRequest, ForgotPasswordRequest, ResetPasswordRequest
+from app.schemas.auth import UserResponse, ChangePasswordRequest, ForgotPasswordRequest, ResetPasswordRequest, SendChangeEmailOtpRequest, ChangeEmailRequest
 from app.services.auth_service import AuthService
 from app.middleware.auth import get_current_user
 from app.core.firebase_jwt import decode_firebase_token
@@ -145,6 +145,31 @@ async def send_change_password_otp(
 ):
     """Send a 6-digit OTP to the logged-in user's email for password-change verification."""
     return await service.send_change_password_otp(current_user, background_tasks)
+
+
+@router.post("/send-change-email-otp", status_code=200)
+@limiter.limit("3/minute")
+async def send_change_email_otp(
+    request: Request,
+    data: SendChangeEmailOtpRequest,
+    background_tasks: BackgroundTasks,
+    current_user: dict = Depends(get_current_user),
+    service: AuthService = Depends(get_auth_service),
+):
+    """Send a 6-digit OTP to the new email address for email-change verification."""
+    return await service.send_change_email_otp(current_user, data.new_email, background_tasks)
+
+
+@router.post("/change-email", status_code=200)
+@limiter.limit("5/minute")
+async def change_email(
+    request: Request,
+    data: ChangeEmailRequest,
+    current_user: dict = Depends(get_current_user),
+    service: AuthService = Depends(get_auth_service),
+):
+    """Validate OTP and update the logged-in user's email in Firebase Auth and Firestore."""
+    return await service.change_email(current_user, data)
 
 
 @router.post("/forgot-password", status_code=200)

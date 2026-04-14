@@ -102,3 +102,14 @@ class ChangePasswordRequest(BaseModel):
         if not any(c in "!@#$%^&*()_+-=[]{}|;':\",./<>?" for c in v):
             raise ValueError("New password must contain at least one special character (!@#$%^&* etc.)")
         return v
+
+
+# ── Change email (OTP-based) ──────────────────────────────────────────────────
+
+class SendChangeEmailOtpRequest(BaseModel):
+    new_email: EmailStr
+
+
+class ChangeEmailRequest(BaseModel):
+    new_email: EmailStr
+    otp_code: str = Field(min_length=6, max_length=6, description="6-digit code sent to the new email")

@@ -16,11 +16,18 @@ from typing import Optional
 from fastapi import APIRouter, Depends, Query
 
 from app.db.database import get_database
-from app.middleware.auth import require_admin, require_student
+from app.middleware.auth import (
+    require_admin,
+    require_management,
+    require_student,
+)
 from app.schemas.market_jobs import (
     MarketJobClickCreate,
     MarketJobStatsResponse,
     MarketJobsResponse,
+    MarketJobApplicationCreate,
+    MarketJobAdminListResponse,
+    MarketJobAnalyticsResponse,
 )
 from app.services.market_jobs_service import MarketJobsService
 
@@ -79,3 +86,46 @@ async def get_market_job_stats(
     Accessible by PLACEMENT_ADMIN role only.
     """
     return await svc.get_stats()
+
+
+# --- NEW: Application Tracking Endpoints ---
+
+
+@router.post("/mark-applied", status_code=201)
+async def mark_market_job_applied(
+    payload: MarketJobApplicationCreate,
+    current_user: dict = Depends(require_student),
+    svc: MarketJobsService = Depends(_get_service),
+) -> dict:
+    """
+    Record that a student confirmed they applied to an external market job.
+    Accessible by STUDENT role only.
+    """
+    return await svc.mark_applied(current_user["id"], payload)
+
+
+@router.get("/admin/applications", response_model=MarketJobAdminListResponse)
+async def get_market_job_admin_applications(
+    branch: Optional[str] = Query(None, description="Filter by student branch"),
+    min_cgpa: Optional[float] = Query(None, description="Filter by minimum CGPA"),
+    _: dict = Depends(require_admin),
+    svc: MarketJobsService = Depends(_get_service),
+) -> MarketJobAdminListResponse:
+    """
+    Return a list of students who applied to market jobs with their details.
+    Accessible by PLACEMENT_ADMIN role only.
+    """
+    return await svc.get_admin_applications(branch, min_cgpa)
+
+
+@router.get("/management/analytics", response_model=MarketJobAnalyticsResponse)
+async def get_market_job_management_stats(
+    _: dict = Depends(require_management),
+    svc: MarketJobsService = Depends(_get_service),
+) -> MarketJobAnalyticsResponse:
+    """
+    Return aggregated market job application analytics.
+    Accessible by COLLEGE_MANAGEMENT role only.
+    """
+    return await svc.get_management_stats()
+

@@ -46,6 +46,14 @@ export const authService = {
     api.patch<{ message: string; user_id: string; role: string }>(
       `/auth/admin/users/${userId}/role`, null, { params: { role } }
     ).then((r) => r.data),
+
+  // Send OTP to new email for email-change verification
+  sendChangeEmailOtp: (newEmail: string) =>
+    api.post<{ message: string }>("/auth/send-change-email-otp", { new_email: newEmail }).then((r) => r.data),
+
+  // Change email with OTP
+  changeEmail: (data: { new_email: string; otp_code: string }) =>
+    api.post<{ message: string }>("/auth/change-email", data).then((r) => r.data),
 };
 
 // ---- STUDENT PROFILE ----
@@ -341,7 +349,39 @@ export const marketJobsService = {
         total_clicks: number;
       }>("/market-jobs/stats")
       .then((r) => r.data),
+
+  markApplied: (data: { job_id: string }) =>
+    api
+      .post<{ success: boolean; message: string }>("/market-jobs/mark-applied", data)
+      .then((r) => r.data),
+
+  getAdminApplications: (params?: { branch?: string; min_cgpa?: number }) =>
+    api
+      .get<{
+        applications: Array<{
+          user_id: string;
+          name: string;
+          email: string;
+          branch: string;
+          cgpa: number;
+          job_id: string;
+          applied_at: string;
+        }>;
+        total: number;
+      }>("/market-jobs/admin/applications", { params })
+      .then((r) => r.data),
+
+  getManagementAnalytics: () =>
+    api
+      .get<{
+        total_applications: number;
+        unique_students: number;
+        branch_distribution: Record<string, number>;
+        avg_cgpa: number;
+      }>("/market-jobs/management/analytics")
+      .then((r) => r.data),
 };
+
 
 // ---- ROUNDS ----
 export const roundService = {
@@ -373,6 +413,17 @@ export const adminProfileService = {
   },
 };
 
+export const managementProfileService = {
+  get: () => api.get("/management-profile/me"),
+  create: (data: any) => api.post("/management-profile/", data),
+  update: (data: any) => api.put("/management-profile/me", data),
+  uploadAvatar: (file: File) => {
+    const fd = new FormData();
+    fd.append("file", file);
+    return api.post("/management-profile/avatar", fd);
+  },
+};
+
 // ---- VERIFICATION ----
 export const verificationService = {
   submit: (doc_url: string) => api.post("/verification/submit", { doc_url }),
@@ -384,17 +435,66 @@ export const verificationService = {
 };
 
 // ---- NEW FEATURES ----
+
+export interface Announcement {
+  id: string;
+  title: string;
+  message: string;
+  target_audience: "STUDENTS" | "PLACEMENT_ADMINS" | "ALL";
+  created_by: string;
+  created_by_name: string;
+  created_at: string;
+}
+
+export interface Complaint {
+  id: string;
+  user_id: string;
+  user_name: string;
+  user_email: string;
+  title: string;
+  description: string;
+  status: "Pending" | "Resolved";
+  solution: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface PaginatedComplaints {
+  complaints: Complaint[];
+  total: number;
+  page: number;
+  limit: number;
+}
+
+export interface LeaderboardEntry {
+  id: string;
+  name: string;
+  department: string;
+  cgpa: number;
+  total_score: number;
+  placement_status: "Placed" | "Open";
+  skills: string[];
+}
+
 export const announcementsService = {
-  list: (params?: { target_audience?: string; limit?: number }) => api.get("/announcements", { params }).then(r => r.data),
-  create: (data: { title: string; message: string; target_audience: string }) => api.post("/announcements", data).then(r => r.data),
+  list: (params?: { target_audience?: string; limit?: number }) =>
+    api.get<Announcement[]>("/announcements", { params }).then(r => r.data),
+  create: (data: { title: string; message: string; target_audience: "STUDENTS" | "PLACEMENT_ADMINS" | "ALL" }) =>
+    api.post<{ id: string; message: string }>("/announcements", data).then(r => r.data),
+  delete: (id: string) =>
+    api.delete(`/announcements/${id}`).then(r => r.data),
 };
 
 export const complaintsService = {
-  list: (params?: { status?: string }) => api.get("/complaints", { params }).then(r => r.data),
-  create: (data: { title: string; description: string }) => api.post("/complaints", data).then(r => r.data),
-  update: (id: string, data: { status: string; solution?: string }) => api.patch(`/complaints/${id}`, data).then(r => r.data),
+  list: (params?: { status?: string; page?: number; limit?: number }) =>
+    api.get<PaginatedComplaints>("/complaints", { params }).then(r => r.data),
+  create: (data: { title: string; description: string }) =>
+    api.post<{ id: string; message: string }>("/complaints", data).then(r => r.data),
+  update: (id: string, data: { status: "Pending" | "Resolved"; solution?: string }) =>
+    api.patch<{ message: string }>(`/complaints/${id}`, data).then(r => r.data),
 };
 
 export const leaderboardService = {
-  get: (params?: { limit?: number; department?: string }) => api.get("/leaderboard", { params }).then(r => r.data),
+  get: (params?: { limit?: number; department?: string }) =>
+    api.get<LeaderboardEntry[]>("/leaderboard", { params }).then(r => r.data),
 };

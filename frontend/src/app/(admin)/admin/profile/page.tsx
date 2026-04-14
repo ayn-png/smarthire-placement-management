@@ -3,11 +3,27 @@ import { useState, useEffect, useRef } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { User, Phone, Building2, Briefcase, Camera, Save, Loader2, Mail } from "lucide-react";
+import { User, Phone, Building2, Briefcase, Camera, Save, Loader2, Mail, Pencil, ChevronUp, ShieldCheck, Timer, AlertCircle } from "lucide-react";
+import { motion, AnimatePresence } from "framer-motion";
 import api from "@/lib/axios";
 import Input from "@/components/ui/Input";
 import Button from "@/components/ui/Button";
 import { useAuth } from "@/contexts/AuthContext";
+import { authService } from "@/services/api";
+import { extractErrorMsg } from "@/lib/utils";
+
+function useCountdown(seconds: number, active: boolean) {
+  const [remaining, setRemaining] = useState(seconds);
+  useEffect(() => {
+    if (!active) { setRemaining(seconds); return; }
+    setRemaining(seconds);
+    const id = setInterval(() => {
+      setRemaining((r) => { if (r <= 1) { clearInterval(id); return 0; } return r - 1; });
+    }, 1000);
+    return () => clearInterval(id);
+  }, [active, seconds]);
+  return remaining;
+}
 
 const schema = z.object({
   full_name: z.string().min(2, "Full name required"),
@@ -26,6 +42,22 @@ export default function AdminProfilePage() {
   const [error, setError] = useState("");
   const [avatarUploading, setAvatarUploading] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
+
+  // ── Email change state ─────────────────────────────────────────────────────
+  const [emailOpen, setEmailOpen] = useState(false);
+  const [newEmail, setNewEmail] = useState("");
+  const [emailOtpSent, setEmailOtpSent] = useState(false);
+  const [emailOtpSending, setEmailOtpSending] = useState(false);
+  const [emailOtpCode, setEmailOtpCode] = useState("");
+  const [emailOtpCountdownActive, setEmailOtpCountdownActive] = useState(false);
+  const [emailError, setEmailError] = useState("");
+  const [emailSuccess, setEmailSuccess] = useState(false);
+  const [emailSaving, setEmailSaving] = useState(false);
+
+  const emailOtpSecondsLeft = useCountdown(600, emailOtpCountdownActive);
+  const emailOtpMinutes = Math.floor(emailOtpSecondsLeft / 60);
+  const emailOtpSeconds = emailOtpSecondsLeft % 60;
+  const emailOtpExpired = emailOtpCountdownActive && emailOtpSecondsLeft === 0;
 
   const { register, handleSubmit, reset, formState: { errors } } = useForm<FormData>({
     resolver: zodResolver(schema),
@@ -70,6 +102,48 @@ export default function AdminProfilePage() {
       setError(err?.response?.data?.detail ?? "Failed to save profile");
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function handleSendEmailOtp() {
+    setEmailError("");
+    if (!newEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(newEmail)) {
+      setEmailError("Enter a valid email address"); return;
+    }
+    setEmailOtpSending(true);
+    try {
+      await authService.sendChangeEmailOtp(newEmail);
+      setEmailOtpSent(true);
+      setEmailOtpCountdownActive(true);
+      setEmailOtpCode("");
+    } catch (err: unknown) {
+      setEmailError(extractErrorMsg(err, "Failed to send verification code"));
+    } finally {
+      setEmailOtpSending(false);
+    }
+  }
+
+  async function handleChangeEmail() {
+    setEmailError("");
+    if (!emailOtpCode || emailOtpCode.length !== 6) {
+      setEmailError("Enter the 6-digit verification code"); return;
+    }
+    if (emailOtpExpired) {
+      setEmailError("Verification code has expired. Please request a new one."); return;
+    }
+    setEmailSaving(true);
+    try {
+      await authService.changeEmail({ new_email: newEmail, otp_code: emailOtpCode });
+      setEmailSuccess(true);
+      setEmailOtpSent(false);
+      setEmailOtpCountdownActive(false);
+      setEmailOtpCode("");
+      setNewEmail("");
+      setTimeout(() => { setEmailSuccess(false); setEmailOpen(false); }, 4000);
+    } catch (err: unknown) {
+      setEmailError(extractErrorMsg(err, "Failed to change email"));
+    } finally {
+      setEmailSaving(false);
     }
   }
 
@@ -195,19 +269,121 @@ export default function AdminProfilePage() {
               error={errors.designation?.message}
             />
           </div>
-          <div>
-            <label className="block text-gray-700 dark:text-white/70 text-sm font-medium mb-1.5">
-              Email Address <span className="text-xs text-gray-400 dark:text-white/30">(read-only)</span>
-            </label>
-            <Input
-              type="email"
-              value={profile?.email ?? user?.email ?? ""}
-              readOnly
-              disabled
-              icon={Mail}
-              className="opacity-70 cursor-not-allowed"
-            />
-            <p className="text-xs text-gray-400 dark:text-white/30 mt-1">Email cannot be changed here</p>
+          {/* Email Change Section */}
+          <div className="rounded-xl border border-gray-200 dark:border-white/10 overflow-hidden">
+            <button
+              type="button"
+              onClick={() => { setEmailOpen((o) => !o); setEmailError(""); setEmailSuccess(false); }}
+              className="w-full flex items-center justify-between px-4 py-3 hover:bg-gray-50 dark:hover:bg-white/5 transition-colors"
+            >
+              <div className="flex items-center gap-3">
+                <Mail className="w-4 h-4 text-blue-500" />
+                <div className="text-left">
+                  <span className="text-sm font-medium text-gray-700 dark:text-white/70">Email Address</span>
+                  <p className="text-xs text-gray-400 dark:text-white/40 mt-0.5">{profile?.email ?? user?.email ?? ""}</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <span className="text-xs text-blue-500 font-medium">Change</span>
+                {emailOpen ? <ChevronUp className="w-3.5 h-3.5 text-gray-400" /> : <Pencil className="w-3.5 h-3.5 text-gray-400" />}
+              </div>
+            </button>
+
+            <AnimatePresence>
+              {emailOpen && (
+                <motion.div
+                  initial={{ height: 0, opacity: 0 }}
+                  animate={{ height: "auto", opacity: 1 }}
+                  exit={{ height: 0, opacity: 0 }}
+                  transition={{ duration: 0.2 }}
+                  className="overflow-hidden"
+                >
+                  <div className="px-4 pb-4 pt-3 space-y-3 border-t border-gray-100 dark:border-white/10">
+                    {emailSuccess && (
+                      <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-xl p-3 text-emerald-400 text-sm">
+                        Email changed successfully. Please log in again with your new email.
+                      </div>
+                    )}
+                    {emailError && (
+                      <div className="bg-red-500/10 border border-red-500/20 rounded-xl p-3 text-red-400 text-sm">{emailError}</div>
+                    )}
+
+                    {/* Step 1 */}
+                    <div className="space-y-2">
+                      <p className="text-xs font-medium text-gray-600 dark:text-white/50">1. Enter your new email address</p>
+                      <div className="flex gap-2">
+                        <input
+                          type="email"
+                          value={newEmail}
+                          onChange={(e) => { setNewEmail(e.target.value); setEmailOtpSent(false); setEmailOtpCountdownActive(false); }}
+                          placeholder="new@example.com"
+                          className="flex-1 px-3 py-2 text-sm border border-gray-300 dark:border-white/20 rounded-lg bg-white dark:bg-white/5 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        />
+                        <Button
+                          onClick={handleSendEmailOtp}
+                          loading={emailOtpSending}
+                          disabled={emailOtpSending || (emailOtpSent && emailOtpSecondsLeft > 540)}
+                          variant="secondary"
+                          size="sm"
+                        >
+                          <ShieldCheck className="w-3.5 h-3.5" />
+                          {emailOtpSent ? (emailOtpSecondsLeft > 540 ? `Resend in ${60 - (600 - emailOtpSecondsLeft)}s` : "Resend") : "Send Code"}
+                        </Button>
+                      </div>
+                    </div>
+
+                    {/* Step 2 */}
+                    <AnimatePresence>
+                      {emailOtpSent && (
+                        <motion.div
+                          initial={{ opacity: 0, height: 0 }}
+                          animate={{ opacity: 1, height: "auto" }}
+                          exit={{ opacity: 0, height: 0 }}
+                          transition={{ duration: 0.2 }}
+                          className="overflow-hidden space-y-2"
+                        >
+                          <div className="flex items-center gap-2">
+                            <p className="text-xs font-medium text-gray-600 dark:text-white/50">2. Enter the verification code</p>
+                            {!emailOtpExpired && emailOtpCountdownActive && (
+                              <span className={`ml-auto text-xs flex items-center gap-1 ${emailOtpSecondsLeft < 60 ? "text-red-500" : "text-gray-400"}`}>
+                                <Timer className="w-3 h-3" />{emailOtpMinutes}:{emailOtpSeconds.toString().padStart(2, "0")}
+                              </span>
+                            )}
+                            {emailOtpExpired && (
+                              <span className="ml-auto text-xs text-red-500 flex items-center gap-1">
+                                <AlertCircle className="w-3 h-3" /> Expired
+                              </span>
+                            )}
+                          </div>
+                          <input
+                            type="text"
+                            inputMode="numeric"
+                            maxLength={6}
+                            value={emailOtpCode}
+                            onChange={(e) => setEmailOtpCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                            placeholder="000000"
+                            className={`w-[160px] px-4 py-2.5 text-center text-xl font-mono tracking-[0.5em] border rounded-xl bg-white dark:bg-white/5 text-gray-900 dark:text-white focus:outline-none focus:ring-2 transition-colors ${emailOtpExpired ? "border-red-300 focus:ring-red-500" : "border-gray-300 dark:border-white/20 focus:ring-blue-500"}`}
+                          />
+                          <p className="text-xs text-gray-400 dark:text-white/30">Check your new email inbox for the 6-digit code</p>
+                          <div className="flex justify-end pt-1">
+                            <Button
+                              loading={emailSaving}
+                              disabled={emailSaving || emailOtpExpired || emailOtpCode.length < 6}
+                              onClick={handleChangeEmail}
+                              variant="primary"
+                              size="sm"
+                            >
+                              <Mail className="w-3.5 h-3.5" />
+                              Update Email
+                            </Button>
+                          </div>
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
           </div>
 
           {success && (

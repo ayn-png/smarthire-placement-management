@@ -36,3 +36,32 @@ class DepartmentClickStat(BaseModel):
 class MarketJobStatsResponse(BaseModel):
     stats: List[DepartmentClickStat]
     total_clicks: int
+
+
+# --- NEW: Application Tracking ---
+
+class MarketJobApplicationCreate(BaseModel):
+    job_id: str  # the 'slug' from Arbeitnow
+
+
+class MarketJobAdminDetail(BaseModel):
+    user_id: str
+    name: str
+    email: str
+    branch: str
+    cgpa: float
+    job_id: str
+    applied_at: datetime
+
+
+class MarketJobAdminListResponse(BaseModel):
+    applications: List[MarketJobAdminDetail]
+    total: int
+
+
+class MarketJobAnalyticsResponse(BaseModel):
+    total_applications: int
+    unique_students: int
+    branch_distribution: dict  # { branch: count }
+    avg_cgpa: float
+

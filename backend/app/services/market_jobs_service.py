@@ -25,8 +25,12 @@ from app.schemas.market_jobs import (
     MarketJobClickCreate,
     DepartmentClickStat,
     MarketJobStatsResponse,
+    MarketJobApplicationCreate,
+    MarketJobAdminDetail,
+    MarketJobAdminListResponse,
+    MarketJobAnalyticsResponse,
 )
-from app.db.helpers import utcnow
+from app.db.helpers import utcnow, serialize_doc
 
 logger = logging.getLogger(__name__)
 
@@ -196,3 +200,124 @@ class MarketJobsService:
             stats=stats,
             total_clicks=sum(dept_counts.values()),
         )
+
+    # ------------------------------------------------------------------
+    # --- NEW: Application Tracking Methods ---
+    # ------------------------------------------------------------------
+
+    async def mark_applied(self, user_id: str, payload: MarketJobApplicationCreate) -> dict:
+        """
+        Record that a student confirmed they applied to an external market job.
+        Stores in `market_job_applications` collection.
+        Checks for existing record to avoid duplicates.
+        """
+        # Duplicate check: {user_id, job_id}
+        query = (
+            self.db.collection("market_job_applications")
+            .where("user_id", "==", user_id)
+            .where("job_id", "==", payload.job_id)
+        )
+        existing = await asyncio.to_thread(query.get)
+        if len(existing) > 0:
+            return {"success": True, "message": "Already recorded"}
+
+        app_data = {
+            "user_id": user_id,
+            "job_id": payload.job_id,
+            "applied": True,
+            "created_at": utcnow(),
+        }
+
+        await asyncio.to_thread(
+            self.db.collection("market_job_applications").add,
+            app_data,
+        )
+
+        return {"success": True, "message": "Application recorded"}
+
+    async def get_admin_applications(
+        self, branch: Optional[str] = None, min_cgpa: Optional[float] = None
+    ) -> MarketJobAdminListResponse:
+        """
+        Fetch all market applications, join with student profiles, and filter.
+        Supports filtering by branch and CGPA.
+        """
+        app_docs = await asyncio.to_thread(self.db.collection("market_job_applications").get)
+        
+        # Load all profiles once for joining - if scaling is an issue, we'd use select() 
+        # but here we need specific fields for filtering and display.
+        profiles_list = await asyncio.to_thread(self.db.collection("student_profiles").get)
+        profiles = {doc.id: doc.to_dict() for doc in profiles_list}
+
+        results: List[MarketJobAdminDetail] = []
+        for doc in app_docs:
+            data = doc.to_dict()
+            uid = data.get("user_id")
+            p = profiles.get(uid)
+            
+            if not p:
+                continue
+
+            # Apply filters
+            if branch and p.get("branch") != branch:
+                continue
+            if min_cgpa is not None and (p.get("cgpa") or 0) < min_cgpa:
+                continue
+
+            results.append(MarketJobAdminDetail(
+                user_id=uid,
+                name=p.get("full_name", "Unknown"),
+                email=p.get("email", "Unknown"),
+                branch=p.get("branch", "Unknown"),
+                cgpa=p.get("cgpa", 0.0),
+                job_id=data.get("job_id", ""),
+                applied_at=data.get("created_at"),
+            ))
+
+        # Sort by applied_at desc
+        results.sort(key=lambda x: x.applied_at, reverse=True)
+
+        return MarketJobAdminListResponse(
+            applications=results,
+            total=len(results),
+        )
+
+    async def get_management_stats(self) -> MarketJobAnalyticsResponse:
+        """
+        Aggregate application stats for management dashboard.
+        Returns total applications, unique students, branch distribution, and avg cgpa.
+        """
+        app_docs = await asyncio.to_thread(self.db.collection("market_job_applications").get)
+        
+        uids = set()
+        total_apps = 0
+        branch_counts: Counter = Counter()
+        cgpa_sum = 0.0
+        students_with_cgpa = 0
+
+        # Pre-fetch profiles for joining
+        profiles_list = await asyncio.to_thread(self.db.collection("student_profiles").get)
+        profiles = {doc.id: doc.to_dict() for doc in profiles_list}
+
+        for doc in app_docs:
+            data = doc.to_dict()
+            uid = data.get("user_id")
+            total_apps += 1
+            uids.add(uid)
+
+            p = profiles.get(uid)
+            if p:
+                branch_counts[p.get("branch", "Unknown")] += 1
+                if p.get("cgpa") is not None:
+                    cgpa_sum += p.get("cgpa")
+                    students_with_cgpa += 1
+
+        avg_cgpa = cgpa_sum / students_with_cgpa if students_with_cgpa > 0 else 0.0
+
+        return MarketJobAnalyticsResponse(
+            total_applications=total_apps,
+            unique_students=len(uids),
+            branch_distribution=dict(branch_counts),
+            avg_cgpa=round(avg_cgpa, 2),
+        )
+

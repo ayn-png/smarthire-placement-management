@@ -74,28 +74,17 @@ export default function LoginPage() {
     setResendVerificationSuccess(false);
     setResendVerificationError("");
 
-    // Check super admin credentials first (server-side check via API route)
-    try {
-      const saRes = await fetch("/api/super-admin/auth", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: data.email, password: data.password }),
-      });
-      if (saRes.ok) {
-        router.push("/super-admin");
-        return;
-      }
-      // Email matched super admin but password was wrong — stop here, don't try Firebase
-      const saBody = await saRes.json().catch(() => ({})) as { type?: string };
-      if (saBody?.type === "wrong_password") {
-        setServerError("Invalid super admin password.");
-        return;
-      }
-      // type === "not_super_admin" → fall through to Firebase login below
-    } catch { /* network error — fall through to Firebase login */ }
-
     try {
       const userCredential = await signInWithEmailAndPassword(auth, data.email, data.password);
+      const pendingStatusPromise = fetch(
+        `/api/super-admin/check-pending?uid=${userCredential.user.uid}`
+      )
+        .then(async (response) => {
+          if (!response.ok) return null;
+          const data = await response.json() as { status?: string };
+          return data.status ?? null;
+        })
+        .catch(() => null);
 
       // Block unverified users
       if (!userCredential.user.emailVerified) {
@@ -107,33 +96,33 @@ export default function LoginPage() {
         return;
       }
 
-      const tokenResult = await userCredential.user.getIdTokenResult(true); // force-refresh to pick up latest custom claims
-      const role = tokenResult.claims.role as string | undefined;
+      // Use cached claims first for faster login; force refresh only if role is missing.
+      let tokenResult = await userCredential.user.getIdTokenResult();
+      let role = tokenResult.claims.role as string | undefined;
+      if (!role) {
+        tokenResult = await userCredential.user.getIdTokenResult(true);
+        role = tokenResult.claims.role as string | undefined;
+      }
 
       // ── Pending-admin gate ────────────────────────────────────────────────
       // Pending admins have Firebase claim "STUDENT" until super admin approves.
       // Without this check they would be routed to /student/dashboard.
       if (role === "STUDENT") {
         try {
-          const checkRes = await fetch(
-            `/api/super-admin/check-pending?uid=${userCredential.user.uid}`
-          );
-          if (checkRes.ok) {
-            const checkData = await checkRes.json() as { status?: string };
-            if (checkData.status === "pending") {
-              await signOut(auth);
-              document.cookie = "__session=; path=/; expires=Thu, 01 Jan 1970 00:00:01 GMT;";
-              document.cookie = "__role=; path=/; expires=Thu, 01 Jan 1970 00:00:01 GMT;";
-              setServerError("Your account is not approved yet. Please wait for Super User approval.");
-              return;
-            }
-            if (checkData.status === "rejected") {
-              await signOut(auth);
-              document.cookie = "__session=; path=/; expires=Thu, 01 Jan 1970 00:00:01 GMT;";
-              document.cookie = "__role=; path=/; expires=Thu, 01 Jan 1970 00:00:01 GMT;";
-              setServerError("Your account request has been rejected. Please contact the portal administrator.");
-              return;
-            }
+          const pendingStatus = await pendingStatusPromise;
+          if (pendingStatus === "pending") {
+            await signOut(auth);
+            document.cookie = "__session=; path=/; expires=Thu, 01 Jan 1970 00:00:01 GMT;";
+            document.cookie = "__role=; path=/; expires=Thu, 01 Jan 1970 00:00:01 GMT;";
+            setServerError("Your account is not approved yet. Please wait for Super User approval.");
+            return;
+          }
+          if (pendingStatus === "rejected") {
+            await signOut(auth);
+            document.cookie = "__session=; path=/; expires=Thu, 01 Jan 1970 00:00:01 GMT;";
+            document.cookie = "__role=; path=/; expires=Thu, 01 Jan 1970 00:00:01 GMT;";
+            setServerError("Your account request has been rejected. Please contact the portal administrator.");
+            return;
           }
         } catch {
           // Non-fatal — if check fails, fall through and treat as normal student
@@ -182,6 +171,28 @@ export default function LoginPage() {
     } catch (err: unknown) {
       const firebaseErr = err as { code?: string; message?: string };
       const code = firebaseErr?.code || "";
+      // If Firebase login fails, try super-admin auth as a fallback path.
+      if (code === "auth/user-not-found" || code === "auth/wrong-password" || code === "auth/invalid-credential") {
+        try {
+          const saRes = await fetch("/api/super-admin/auth", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ email: data.email, password: data.password }),
+          });
+          if (saRes.ok) {
+            router.push("/super-admin");
+            return;
+          }
+          const saBody = await saRes.json().catch(() => ({})) as { type?: string };
+          if (saBody?.type === "wrong_password") {
+            setServerError("Invalid super admin password.");
+            return;
+          }
+        } catch {
+          // Ignore fallback errors and show the standard Firebase error below.
+        }
+      }
+
       if (code === "auth/user-not-found" || code === "auth/wrong-password" || code === "auth/invalid-credential") {
         setServerError("Invalid email or password");
       } else if (code === "auth/too-many-requests") {

@@ -9,7 +9,7 @@ import uuid
 import logging
 from datetime import datetime, timezone, timedelta
 
-from app.schemas.auth import UserResponse, ChangePasswordRequest, ResetPasswordRequest
+from app.schemas.auth import UserResponse, ChangePasswordRequest, ResetPasswordRequest, ChangeEmailRequest, SendChangeEmailOtpRequest
 from app.core.exceptions import NotFoundException
 from app.db.helpers import serialize_doc, utcnow
 
@@ -173,6 +173,150 @@ class AuthService:
             )
 
         return {"message": "Password changed successfully"}
+
+    # ── OTP for Email Change ──────────────────────────────────────────────────
+
+    async def send_change_email_otp(
+        self, current_user: dict, new_email: str, background_tasks=None
+    ) -> dict:
+        """
+        Generate a 6-digit OTP and email it to the NEW email address to verify ownership.
+        Stores the OTP in Firestore under {user_id}_change_email.
+        """
+        from fastapi import HTTPException, status as http_status
+
+        user_id = current_user.get("id")
+        current_email = current_user.get("email", "")
+        full_name = current_user.get("full_name", "User")
+        if not user_id:
+            raise HTTPException(status_code=http_status.HTTP_401_UNAUTHORIZED, detail="Not authenticated")
+
+        # Validate: new email must differ from current
+        if new_email.lower() == current_email.lower():
+            raise HTTPException(
+                status_code=http_status.HTTP_400_BAD_REQUEST,
+                detail="New email is the same as your current email.",
+            )
+
+        # Check if new email is already taken by another user
+        existing_users = await asyncio.to_thread(
+            lambda: list(self.db.collection("users").where("email", "==", new_email).stream())
+        )
+        for u in existing_users:
+            if u.id != user_id:
+                raise HTTPException(
+                    status_code=http_status.HTTP_400_BAD_REQUEST,
+                    detail="This email address is already registered to another account.",
+                )
+
+        # Rate-limit: 60 seconds between requests
+        doc_id = f"{user_id}_change_email"
+        otp_ref = self.db.collection(_OTP_COLLECTION).document(doc_id)
+        existing = await asyncio.to_thread(otp_ref.get)
+        if existing.exists:
+            ex_data = existing.to_dict() or {}
+            created = ex_data.get("created_at")
+            if created and isinstance(created, datetime):
+                created_aware = created if created.tzinfo else created.replace(tzinfo=timezone.utc)
+                age = (datetime.now(timezone.utc) - created_aware).total_seconds()
+                if age < 60:
+                    raise HTTPException(
+                        status_code=http_status.HTTP_429_TOO_MANY_REQUESTS,
+                        detail="Please wait 60 seconds before requesting a new code.",
+                    )
+
+        otp_code = _generate_otp()
+        expires_at = datetime.now(timezone.utc) + timedelta(minutes=_OTP_EXPIRY_MINUTES)
+
+        await asyncio.to_thread(otp_ref.set, {
+            "user_id": user_id,
+            "current_email": current_email,
+            "new_email": new_email,
+            "code": otp_code,
+            "expires_at": expires_at,
+            "created_at": utcnow(),
+        })
+
+        if background_tasks:
+            from app.services.email_service import send_otp_email
+            background_tasks.add_task(send_otp_email, new_email, full_name, otp_code)
+
+        masked = new_email[:2] + "***" + new_email[new_email.index("@"):] if "@" in new_email else "***"
+        return {"message": f"Verification code sent to {masked}"}
+
+    async def change_email(
+        self, current_user: dict, data: ChangeEmailRequest, background_tasks=None
+    ) -> dict:
+        """
+        Validate OTP then update email in Firebase Auth and Firestore users doc.
+        """
+        from fastapi import HTTPException, status as http_status
+        from app.core.firebase_init import get_firebase_auth
+
+        user_id = current_user.get("id")
+        if not user_id:
+            raise HTTPException(status_code=http_status.HTTP_401_UNAUTHORIZED, detail="Not authenticated")
+
+        doc_id = f"{user_id}_change_email"
+        otp_ref = self.db.collection(_OTP_COLLECTION).document(doc_id)
+        otp_doc = await asyncio.to_thread(otp_ref.get)
+
+        if not otp_doc.exists:
+            raise HTTPException(
+                status_code=http_status.HTTP_400_BAD_REQUEST,
+                detail="No verification code found. Please request a new one.",
+            )
+
+        otp_data = otp_doc.to_dict() or {}
+        expires_at = otp_data.get("expires_at")
+        stored_code = otp_data.get("code", "")
+        stored_new_email = otp_data.get("new_email", "")
+        now = datetime.now(timezone.utc)
+
+        # Check expiry
+        if expires_at:
+            exp = expires_at if expires_at.tzinfo else expires_at.replace(tzinfo=timezone.utc)
+            if now > exp:
+                await asyncio.to_thread(otp_ref.delete)
+                raise HTTPException(
+                    status_code=http_status.HTTP_400_BAD_REQUEST,
+                    detail="Verification code has expired. Please request a new one.",
+                )
+
+        # Validate OTP code
+        if data.otp_code != stored_code:
+            raise HTTPException(
+                status_code=http_status.HTTP_400_BAD_REQUEST,
+                detail="Invalid verification code.",
+            )
+
+        # Validate new_email matches what OTP was issued for
+        if data.new_email.lower() != stored_new_email.lower():
+            raise HTTPException(
+                status_code=http_status.HTTP_400_BAD_REQUEST,
+                detail="Email mismatch. Please restart the email change process.",
+            )
+
+        old_email = current_user.get("email", "")
+
+        # Update Firebase Auth email
+        try:
+            fb_auth = get_firebase_auth()
+            await asyncio.to_thread(fb_auth.update_user, user_id, email=data.new_email)
+        except Exception as e:
+            raise HTTPException(
+                status_code=http_status.HTTP_400_BAD_REQUEST,
+                detail=f"Failed to update email: {str(e)}",
+            )
+
+        # Update Firestore users doc
+        user_ref = self.db.collection("users").document(user_id)
+        await asyncio.to_thread(user_ref.update, {"email": data.new_email, "updated_at": utcnow()})
+
+        # Delete used OTP
+        await asyncio.to_thread(otp_ref.delete)
+
+        return {"message": "Email updated successfully. Please log in again with your new email."}
 
     # ── Forgot Password (custom token flow) ──────────────────────────────────
 

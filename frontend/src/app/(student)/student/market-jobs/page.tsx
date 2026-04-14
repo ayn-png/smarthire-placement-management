@@ -76,6 +76,8 @@ export default function MarketJobsPage() {
    */
   async function handleApply(job: MarketJob) {
     window.open(job.url, "_blank", "noopener,noreferrer");
+    // Track click for modal popup later
+    localStorage.setItem("market_job_clicked", job.slug);
     try {
       await marketJobsService.recordClick({
         job_title: job.title,

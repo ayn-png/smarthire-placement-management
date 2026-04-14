@@ -1,4 +1,5 @@
 "use client";
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
@@ -31,16 +32,19 @@ const ADMIN_NAV = [
   { href: "/admin/students",         label: "Students",            icon: Users },
   { href: "/admin/companies",        label: "Companies",           icon: Building2 },
   { href: "/admin/placement-drives", label: "Placement Drives",    icon: CalendarDays },
+  { href: "/admin/market-jobs",      label: "Market Jobs",         icon: Globe },
   { href: "/admin/reports",          label: "Reports",             icon: BarChart3 },
   { href: "/admin/settings",         label: "Settings",            icon: Settings2 },
 ];
 
 const MANAGEMENT_NAV = [
   { href: "/management/dashboard",      label: "Dashboard",      icon: LayoutDashboard },
+  { href: "/management/profile",        label: "My Profile",     icon: User },
   { href: "/management/announcements",  label: "Announcements",  icon: BellRing },
   { href: "/management/complaints",     label: "Complaints",     icon: AlertCircle },
   { href: "/management/leaderboard",    label: "Leaderboard",    icon: Trophy },
   { href: "/management/analytics",      label: "Analytics",      icon: PieChart },
+  { href: "/management/market-jobs-analytics", label: "Market Analytics", icon: BarChart3 },
   { href: "/management/statistics",     label: "Statistics",     icon: TrendingUp },
   { href: "/management/reports",        label: "Reports",        icon: BarChart3 },
 ];
@@ -62,12 +66,17 @@ export default function Sidebar({ collapsed, setCollapsed, mobileOpen, setMobile
   const pathname = usePathname();
   const router = useRouter();
   const { user, role: authRole } = useAuth();
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   // Use cookie as an immediate synchronous fallback so the correct nav renders
   // on the very first paint without waiting for the Firebase auth callback.
-  const cookieRole = getCookieRole();
-  const role = authRole || cookieRole || "";
-  const name = user?.displayName || user?.email?.split("@")[0] || "User";
+  const cookieRole = typeof document !== "undefined" ? getCookieRole() : undefined;
+  const role = mounted ? (authRole || cookieRole || "STUDENT") : "STUDENT";
+  const name = mounted ? (user?.displayName || user?.email?.split("@")[0] || "User") : "User";
 
   const navItems =
     role === "STUDENT" ? STUDENT_NAV :

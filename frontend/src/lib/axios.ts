@@ -69,6 +69,16 @@ api.interceptors.response.use(
         }
       }
     }
+
+    // Handle 403 Forbidden for deactivated accounts (unverified admins)
+    if (
+      error.response?.status === 403 && 
+      error.response?.data?.detail === "Account is deactivated" &&
+      typeof window !== "undefined"
+    ) {
+      window.location.href = "/pending-approval";
+    }
+
     return Promise.reject(error);
   }
 );
