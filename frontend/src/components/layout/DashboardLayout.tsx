@@ -50,11 +50,15 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   // --- NEW: Market Job tracking ---
   const [clickedJobId, setClickedJobId] = useState<string | null>(null);
 
-  // Check for return on focus or mount
+  // Check for return on focus, visibility change, or mount
   useEffect(() => {
+    // Only track for students
+    if (role !== "STUDENT") return;
+
     const checkTracking = () => {
       if (typeof window === "undefined") return;
       const stored = localStorage.getItem("market_job_clicked");
+      // If we have a stored job but haven't triggered the modal yet
       if (stored && !clickedJobId) {
         setClickedJobId(stored);
       }
@@ -62,8 +66,16 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
     checkTracking();
     window.addEventListener("focus", checkTracking);
-    return () => window.removeEventListener("focus", checkTracking);
-  }, [clickedJobId]);
+    // Visibilitychange is more robust for "coming back" from other tabs
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "visible") checkTracking();
+    });
+
+    return () => {
+      window.removeEventListener("focus", checkTracking);
+      document.removeEventListener("visibilitychange", checkTracking);
+    };
+  }, [clickedJobId, role]);
 
   // Read cookie synchronously so the correct mobile nav renders on first paint
   // without waiting for the Firebase auth callback to complete.
@@ -154,12 +166,14 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       </nav>
 
       {/* Market Job Tracking Modal */}
-      {clickedJobId && (
-        <MarketJobApplyModal 
-          jobId={clickedJobId} 
-          onClose={() => setClickedJobId(null)} 
-        />
-      )}
+      <AnimatePresence>
+        {clickedJobId && (
+          <MarketJobApplyModal 
+            jobId={clickedJobId} 
+            onClose={() => setClickedJobId(null)} 
+          />
+        )}
+      </AnimatePresence>
     </div>
   );
 }

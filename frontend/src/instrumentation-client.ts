@@ -1,7 +1,3 @@
-// This file configures the Sentry SDK on the CLIENT side (browser).
-// It is imported automatically by Next.js when the file exists at the root.
-// https://docs.sentry.io/platforms/javascript/guides/nextjs/
-
 import * as Sentry from "@sentry/nextjs";
 
 Sentry.init({
