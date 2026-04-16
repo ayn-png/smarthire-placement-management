@@ -37,3 +37,5 @@ Sentry.init({
   // Don't send errors in development (set NEXT_PUBLIC_SENTRY_DSN to enable locally)
   enabled: !!process.env.NEXT_PUBLIC_SENTRY_DSN,
 });
+
+export const onRouterTransitionStart = Sentry.captureRouterTransitionStart;

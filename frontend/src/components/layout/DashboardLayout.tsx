@@ -47,6 +47,16 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const pathname = usePathname();
   const { role: authRole } = useAuth();
 
+  // Read cookie synchronously so the correct mobile nav renders on first paint
+  // without waiting for the Firebase auth callback to complete.
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
+
+  const cookieRole = typeof document !== "undefined"
+    ? document.cookie.match(/(?:^|;\s*)__role=([^;]+)/)?.[1]
+    : undefined;
+  const role = mounted ? (authRole || cookieRole || "STUDENT") : "STUDENT";
+
   // --- NEW: Market Job tracking ---
   const [clickedJobId, setClickedJobId] = useState<string | null>(null);
 
@@ -76,16 +86,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       document.removeEventListener("visibilitychange", checkTracking);
     };
   }, [clickedJobId, role]);
-
-  // Read cookie synchronously so the correct mobile nav renders on first paint
-  // without waiting for the Firebase auth callback to complete.
-  const [mounted, setMounted] = useState(false);
-  useEffect(() => setMounted(true), []);
-
-  const cookieRole = typeof document !== "undefined"
-    ? document.cookie.match(/(?:^|;\s*)__role=([^;]+)/)?.[1]
-    : undefined;
-  const role = mounted ? (authRole || cookieRole || "STUDENT") : "STUDENT";
   const mobileItems = MOBILE_NAV[role] || MOBILE_NAV.STUDENT;
 
   /* Scroll to top on route change */
