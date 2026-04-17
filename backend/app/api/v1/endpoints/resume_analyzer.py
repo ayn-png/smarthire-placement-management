@@ -131,16 +131,19 @@ async def health_check():
     """Health check endpoint for resume analyzer service"""
     try:
         from app.core.config import settings
-        if not settings.OPENAI_API_KEY:
+        use_openrouter = bool(settings.OPENROUTER_API_KEY)
+        use_openai = bool(settings.OPENAI_API_KEY) and not use_openrouter
+        if not (use_openai or use_openrouter):
             return {
                 "status": "error",
-                "message": "OpenAI API key not configured"
+                "message": "OpenAI/OpenRouter API key not configured"
             }
 
         return {
             "status": "healthy",
             "service": "resume_analyzer",
-            "model": "gpt-4o-mini",
+            "model": "gpt-4o-mini" if use_openai else "openai/gpt-4o-mini",
+            "provider": "openai" if use_openai else "openrouter",
             "configured": True
         }
 

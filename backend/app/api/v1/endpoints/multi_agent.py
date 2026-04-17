@@ -226,27 +226,32 @@ async def health_check():
         from app.core.config import settings
         from app.core.langsmith_config import langsmith_config
 
-        # Check if OpenAI API key is configured
+        # Check if any supported LLM provider key is configured
         openai_configured = bool(settings.OPENAI_API_KEY)
+        openrouter_configured = bool(settings.OPENROUTER_API_KEY)
+        llm_configured = openai_configured or openrouter_configured
+        llm_provider = "openrouter" if openrouter_configured else ("openai" if openai_configured else None)
 
         # Check LangSmith configuration
         langsmith_enabled = langsmith_config.get("enabled", False)
 
         return {
-            "status": "healthy" if openai_configured else "degraded",
+            "status": "healthy" if llm_configured else "degraded",
             "service": "multi_agent_system",
             "components": {
-                "supervisor_agent": "available" if openai_configured else "not_configured",
-                "resume_extraction_agent": "available" if openai_configured else "not_configured",
-                "job_matching_agent": "available" if openai_configured else "not_configured",
+                "supervisor_agent": "available" if llm_configured else "not_configured",
+                "resume_extraction_agent": "available" if llm_configured else "not_configured",
+                "job_matching_agent": "available" if llm_configured else "not_configured",
                 "langsmith_tracing": "enabled" if langsmith_enabled else "disabled"
             },
             "models": {
-                "llm": "gpt-4o-mini",
+                "llm": "openai/gpt-4o-mini" if openrouter_configured else ("gpt-4o-mini" if openai_configured else None),
                 "embeddings": "text-embedding-3-small"
             },
             "configuration": {
                 "openai_api_key_configured": openai_configured,
+                "openrouter_api_key_configured": openrouter_configured,
+                "llm_provider": llm_provider,
                 "langsmith_api_key_configured": langsmith_enabled,
                 "langsmith_project": langsmith_config.get("project") if langsmith_enabled else None
             }

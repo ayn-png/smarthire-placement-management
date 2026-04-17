@@ -29,16 +29,26 @@ class ResumeAnalysis(BaseModel):
 
 class ResumeAnalyzerService:
     def __init__(self):
-        if not settings.OPENAI_API_KEY:
-            raise ValueError("OPENAI_API_KEY not configured in environment")
+        use_openrouter = bool(settings.OPENROUTER_API_KEY)
+        use_openai = bool(settings.OPENAI_API_KEY) and not use_openrouter
 
-        self.llm = ChatOpenAI(
-            model="gpt-4o-mini",
-            temperature=0,
-            openai_api_key=settings.OPENAI_API_KEY,
-            timeout=60,
-            max_retries=2,
-        )
+        if not (use_openai or use_openrouter):
+            raise ValueError("OPENAI_API_KEY or OPENROUTER_API_KEY not configured in environment")
+
+        model_name = "gpt-4o-mini" if use_openai else "openai/gpt-4o-mini"
+        api_key = settings.OPENAI_API_KEY if use_openai else settings.OPENROUTER_API_KEY
+
+        llm_kwargs = {
+            "model": model_name,
+            "temperature": 0,
+            "openai_api_key": api_key,
+            "timeout": 60,
+            "max_retries": 2,
+        }
+        if use_openrouter and not use_openai:
+            llm_kwargs["base_url"] = "https://openrouter.ai/api/v1"
+
+        self.llm = ChatOpenAI(**llm_kwargs)
 
         self.parser = JsonOutputParser(pydantic_object=ResumeAnalysis)
 

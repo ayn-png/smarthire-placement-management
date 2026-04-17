@@ -44,17 +44,27 @@ class ResumeExtractionAgent:
 
     def __init__(self):
         """Initialize the Resume Extraction Agent with LLM and parsers"""
-        if not settings.OPENAI_API_KEY:
-            raise ValueError("OPENAI_API_KEY is required for Resume Extraction Agent")
+        use_openrouter = bool(settings.OPENROUTER_API_KEY)
+        use_openai = bool(settings.OPENAI_API_KEY) and not use_openrouter
 
-        # Initialize OpenAI LLM for structuring
-        self.llm = ChatOpenAI(
-            model="gpt-4o-mini",
-            temperature=0,  # Deterministic output
-            openai_api_key=settings.OPENAI_API_KEY,
-            timeout=60,
-            max_retries=2
-        )
+        if not (use_openai or use_openrouter):
+            raise ValueError("OPENAI_API_KEY or OPENROUTER_API_KEY is required for Resume Extraction Agent")
+
+        model_name = "gpt-4o-mini" if use_openai else "openai/gpt-4o-mini"
+        api_key = settings.OPENAI_API_KEY if use_openai else settings.OPENROUTER_API_KEY
+
+        llm_kwargs = {
+            "model": model_name,
+            "temperature": 0,
+            "openai_api_key": api_key,
+            "timeout": 60,
+            "max_retries": 2,
+        }
+        if use_openrouter and not use_openai:
+            llm_kwargs["base_url"] = "https://openrouter.ai/api/v1"
+
+        # Initialize LLM for structuring
+        self.llm = ChatOpenAI(**llm_kwargs)
 
         # JSON output parser with schema
         self.parser = JsonOutputParser(pydantic_object=ExtractedResume)

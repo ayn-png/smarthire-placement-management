@@ -144,10 +144,12 @@ async def lifespan(app: FastAPI):
     else:
         logger.warning("MISTRAL_API_KEY is not set - mock interview chat will use rule-based fallback")
 
-    if settings.OPENAI_API_KEY:
+    if settings.OPENROUTER_API_KEY:
+        logger.info("OpenRouter configured - Resume analysis AI enabled via OpenAI-compatible API")
+    elif settings.OPENAI_API_KEY:
         logger.info("OpenAI configured - Resume analysis AI enabled")
     else:
-        logger.warning("OPENAI_API_KEY is not set - resume analysis unavailable")
+        logger.warning("OPENAI_API_KEY/OPENROUTER_API_KEY is not set - resume analysis unavailable")
 
     # Security warnings
     if "change-this" in settings.INTERNAL_API_SECRET:

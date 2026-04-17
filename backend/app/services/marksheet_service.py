@@ -33,8 +33,8 @@ async def extract_marksheet_data(marksheet_url: str) -> dict:
     """
     empty = {"roll_number": None, "full_name": None, "semester": None, "branch": None, "sgpa": None, "cgpa": None}
 
-    if not settings.OPENAI_API_KEY:
-        logger.warning("[marksheet] OPENAI_API_KEY not set — skipping extraction")
+    if not (settings.OPENAI_API_KEY or settings.OPENROUTER_API_KEY):
+        logger.warning("[marksheet] OPENAI_API_KEY/OPENROUTER_API_KEY not set — skipping extraction")
         return empty
 
     if not marksheet_url:
@@ -162,18 +162,27 @@ def _extract_text(file_path: str, ext: str) -> str:
 
 
 async def _call_openai(text: str) -> dict:
-    """Call OpenAI GPT-4o-mini to extract structured data from marksheet text."""
+    """Call an OpenAI-compatible LLM (OpenAI/OpenRouter) to extract structured data."""
     empty = {"roll_number": None, "full_name": None, "semester": None, "branch": None, "sgpa": None, "cgpa": None}
 
     try:
         from langchain_openai import ChatOpenAI  # type: ignore
         from langchain_core.messages import HumanMessage  # type: ignore
 
-        llm = ChatOpenAI(
-            model="gpt-4o-mini",
-            temperature=0.0,
-            api_key=settings.OPENAI_API_KEY,
-        )
+        use_openrouter = bool(settings.OPENROUTER_API_KEY)
+        use_openai = bool(settings.OPENAI_API_KEY) and not use_openrouter
+        api_key = settings.OPENAI_API_KEY if use_openai else settings.OPENROUTER_API_KEY
+        model_name = "gpt-4o-mini" if use_openai else "openai/gpt-4o-mini"
+
+        llm_kwargs = {
+            "model": model_name,
+            "temperature": 0.0,
+            "api_key": api_key,
+        }
+        if not use_openai:
+            llm_kwargs["base_url"] = "https://openrouter.ai/api/v1"
+
+        llm = ChatOpenAI(**llm_kwargs)
 
         prompt = f"""You are an expert at reading Indian university marksheets and grade cards.
 Extract the following fields from the marksheet text below.
