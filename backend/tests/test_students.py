@@ -143,3 +143,57 @@ async def test_export_csv_student_forbidden(client: AsyncClient):
         headers=auth_headers("STUDENT"),
     )
     assert resp.status_code == 403
+
+
+# ── POST /students/marksheet ────────────────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_upload_marksheet_contract_with_metadata(client: AsyncClient, monkeypatch):
+    """POST /students/marksheet returns legacy extracted_data plus optional metadata."""
+
+    async def fake_save_marksheet(file, user_id):
+        return "https://cdn.example.com/marksheet.pdf"
+
+    async def fake_extract_marksheet_data(_url):
+        return {
+            "roll_number": "123456789",
+            "full_name": "Test Student",
+            "semester": 6,
+            "branch": "CSE",
+            "sgpa": 8.5,
+            "cgpa": 8.2,
+            "system_flags": {
+                "needs_review": True,
+                "missing_fields": ["subjects"],
+                "confidence_score": 0.78,
+            },
+            "ui_instructions": {
+                "show_popup": True,
+                "popup_message": "Please review.",
+                "highlight_fields": ["subjects"],
+            },
+        }
+
+    monkeypatch.setattr("app.api.v1.endpoints.students.save_marksheet", fake_save_marksheet)
+    monkeypatch.setattr("app.services.marksheet_service.extract_marksheet_data", fake_extract_marksheet_data)
+
+    files = {"file": ("marksheet.pdf", b"fake-pdf-bytes", "application/pdf")}
+    resp = await client.post(
+        "/api/v1/students/marksheet",
+        headers=auth_headers("STUDENT"),
+        files=files,
+    )
+
+    assert resp.status_code == 200
+    payload = resp.json()
+
+    assert payload["marksheet_url"] == "https://cdn.example.com/marksheet.pdf"
+    assert payload["message"] == "Marksheet uploaded successfully"
+    assert payload["extracted_data"]["roll_number"] == "123456789"
+    assert payload["extracted_data"]["full_name"] == "Test Student"
+    assert payload["extracted_data"]["semester"] == 6
+    assert payload["extracted_data"]["branch"] == "CSE"
+    assert payload["extracted_data"]["sgpa"] == 8.5
+    assert payload["extracted_data"]["cgpa"] == 8.2
+    assert payload["system_flags"]["confidence_score"] == 0.78
+    assert payload["ui_instructions"]["highlight_fields"] == ["subjects"]

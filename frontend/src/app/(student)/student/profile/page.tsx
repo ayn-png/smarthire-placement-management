@@ -67,6 +67,38 @@ const schema = z.object({
 
 type FormData = z.infer<typeof schema>;
 
+type ExtractionSystemFlags = {
+  needs_review?: boolean;
+  missing_fields?: string[];
+  confidence_score?: number;
+};
+
+type ExtractionUiInstructions = {
+  show_popup?: boolean;
+  popup_message?: string;
+  highlight_fields?: string[];
+};
+
+type ProfileExtractKey = "full_name" | "roll_number" | "semester" | "branch" | "sgpa" | "cgpa";
+
+const EXTRACT_KEY_TO_LABEL: Record<ProfileExtractKey, string> = {
+  full_name: "Name",
+  roll_number: "Roll Number",
+  semester: "Semester",
+  branch: "Branch",
+  sgpa: "SGPA",
+  cgpa: "CGPA",
+};
+
+const MISSING_FIELD_PATH_TO_KEY: Record<string, ProfileExtractKey> = {
+  "student_profile.full_name": "full_name",
+  "student_profile.roll_number": "roll_number",
+  "student_profile.current_semester": "semester",
+  "student_profile.branch": "branch",
+  "student_profile.sgpa": "sgpa",
+  "student_profile.cgpa": "cgpa",
+};
+
 // ── Avatar Upload Widget ────────────────────────────────────────────────────
 function AvatarUpload({
   avatarUrl,
@@ -172,9 +204,15 @@ function MarksheetUpload({
   marksheetUrl,
   onUploaded,
   extractedFields,
+  missingFields,
+  lowConfidenceFields,
+  confidenceScore,
 }: {
   marksheetUrl?: string | null;
   extractedFields?: string[];
+  missingFields?: string[];
+  lowConfidenceFields?: string[];
+  confidenceScore?: number | null;
   onUploaded: (url: string, extracted: {
     roll_number: string | null;
     full_name: string | null;
@@ -182,6 +220,14 @@ function MarksheetUpload({
     branch: string | null;
     sgpa: number | null;
     cgpa: number | null;
+  }, systemFlags?: {
+    needs_review?: boolean;
+    missing_fields?: string[];
+    confidence_score?: number;
+  }, uiInstructions?: {
+    show_popup?: boolean;
+    popup_message?: string;
+    highlight_fields?: string[];
   }) => void;
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
@@ -205,7 +251,7 @@ function MarksheetUpload({
       setExtracting(true);
       const result = await studentService.uploadMarksheet(file);
       setUploaded(true);
-      onUploaded(result.marksheet_url, result.extracted_data);
+      onUploaded(result.marksheet_url, result.extracted_data, result.system_flags, result.ui_instructions);
     } catch (err: unknown) {
       const msg = extractErrorMsg(err, "Upload failed");
       setError(msg);
@@ -284,21 +330,50 @@ function MarksheetUpload({
 
       {/* AI extraction feedback banner */}
       {uploaded && !uploading && (
-        extractedFields && extractedFields.length > 0 ? (
-          <div className="flex items-start gap-2 px-3 py-2.5 bg-emerald-50 dark:bg-emerald-950/20 border border-emerald-200 dark:border-emerald-800/40 rounded-lg">
-            <CheckCircle className="w-4 h-4 text-emerald-500 flex-shrink-0 mt-0.5" />
-            <p className="text-xs text-emerald-700 dark:text-emerald-400">
-              <span className="font-semibold">AI auto-filled:</span> {extractedFields.join(", ")}
-            </p>
-          </div>
-        ) : extractedFields && extractedFields.length === 0 ? (
-          <div className="flex items-start gap-2 px-3 py-2.5 bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800/40 rounded-lg">
-            <AlertCircle className="w-4 h-4 text-amber-500 flex-shrink-0 mt-0.5" />
-            <p className="text-xs text-amber-700 dark:text-amber-400">
-              AI couldn&apos;t auto-fill fields — please fill them manually
-            </p>
-          </div>
-        ) : null
+        <div className="space-y-2">
+          {typeof confidenceScore === "number" && (
+            <div className="flex items-start gap-2 px-3 py-2 bg-surface-50 dark:bg-surface-900/40 border border-surface-200 dark:border-surface-700 rounded-lg">
+              <ShieldCheck className="w-4 h-4 text-surface-500 dark:text-surface-400 flex-shrink-0 mt-0.5" />
+              <p className="text-xs text-surface-600 dark:text-surface-300">
+                Extraction confidence: <span className="font-semibold">{Math.round(confidenceScore * 100)}%</span>
+              </p>
+            </div>
+          )}
+
+          {extractedFields && extractedFields.length > 0 && (
+            <div className="flex items-start gap-2 px-3 py-2.5 bg-emerald-50 dark:bg-emerald-950/20 border border-emerald-200 dark:border-emerald-800/40 rounded-lg">
+              <CheckCircle className="w-4 h-4 text-emerald-500 flex-shrink-0 mt-0.5" />
+              <p className="text-xs text-emerald-700 dark:text-emerald-400">
+                <span className="font-semibold">AI auto-filled:</span> {extractedFields.join(", ")}
+              </p>
+            </div>
+          )}
+
+          {missingFields && missingFields.length > 0 ? (
+            <div className="flex items-start gap-2 px-3 py-2.5 bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800/40 rounded-lg">
+              <AlertCircle className="w-4 h-4 text-amber-500 flex-shrink-0 mt-0.5" />
+              <p className="text-xs text-amber-700 dark:text-amber-400">
+                <span className="font-semibold">Not found in marksheet:</span> {missingFields.join(", ")}. Please fill these manually.
+              </p>
+            </div>
+          ) : extractedFields && extractedFields.length === 0 ? (
+            <div className="flex items-start gap-2 px-3 py-2.5 bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800/40 rounded-lg">
+              <AlertCircle className="w-4 h-4 text-amber-500 flex-shrink-0 mt-0.5" />
+              <p className="text-xs text-amber-700 dark:text-amber-400">
+                AI couldn&apos;t auto-fill fields. Please fill the required fields manually.
+              </p>
+            </div>
+          ) : null}
+
+          {lowConfidenceFields && lowConfidenceFields.length > 0 && (
+            <div className="flex items-start gap-2 px-3 py-2.5 bg-orange-50 dark:bg-orange-950/20 border border-orange-200 dark:border-orange-800/40 rounded-lg">
+              <AlertCircle className="w-4 h-4 text-orange-500 flex-shrink-0 mt-0.5" />
+              <p className="text-xs text-orange-700 dark:text-orange-400">
+                <span className="font-semibold">Please verify:</span> {lowConfidenceFields.join(", ")}
+              </p>
+            </div>
+          )}
+        </div>
       )}
 
       <input
@@ -392,6 +467,9 @@ export default function ProfilePage() {
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [marksheetUrl, setMarksheetUrl] = useState<string | null>(null);
   const [extractedFields, setExtractedFields] = useState<string[] | undefined>(undefined);
+  const [missingExtractedFields, setMissingExtractedFields] = useState<string[]>([]);
+  const [lowConfidenceFields, setLowConfidenceFields] = useState<string[]>([]);
+  const [extractionConfidence, setExtractionConfidence] = useState<number | null>(null);
   const [verificationStatus, setVerificationStatus] = useState<string | null>(null);
 
   // ── Password change state ───────────────────────────────────────────────
@@ -476,7 +554,7 @@ export default function ProfilePage() {
     branch: string | null;
     sgpa: number | null;
     cgpa: number | null;
-  }) {
+  }, systemFlags?: ExtractionSystemFlags, uiInstructions?: ExtractionUiInstructions) {
     setMarksheetUrl(url);
     const filled: string[] = [];
 
@@ -488,6 +566,35 @@ export default function ProfilePage() {
     if (extracted.sgpa !== null && extracted.sgpa !== undefined) { setValue("sgpa", extracted.sgpa); filled.push("SGPA"); }
     if (extracted.cgpa !== null && extracted.cgpa !== undefined) { setValue("cgpa", extracted.cgpa); filled.push("CGPA"); }
 
+    const metadataMissingPaths = Array.isArray(systemFlags?.missing_fields) ? systemFlags.missing_fields : [];
+    const missingKeys = metadataMissingPaths
+      .map((path) => MISSING_FIELD_PATH_TO_KEY[path])
+      .filter((key): key is ProfileExtractKey => Boolean(key));
+
+    const fallbackMissingKeys: ProfileExtractKey[] = [];
+    if (!extracted.full_name) fallbackMissingKeys.push("full_name");
+    if (!extracted.roll_number) fallbackMissingKeys.push("roll_number");
+    if (!extracted.semester) fallbackMissingKeys.push("semester");
+    if (!branch) fallbackMissingKeys.push("branch");
+    if (extracted.sgpa === null || extracted.sgpa === undefined) fallbackMissingKeys.push("sgpa");
+    if (extracted.cgpa === null || extracted.cgpa === undefined) fallbackMissingKeys.push("cgpa");
+
+    const resolvedMissingKeys = Array.from(new Set(missingKeys.length > 0 ? missingKeys : fallbackMissingKeys));
+
+    const metadataHighlightPaths = Array.isArray(uiInstructions?.highlight_fields) ? uiInstructions.highlight_fields : [];
+    const highlightKeys = metadataHighlightPaths
+      .map((path) => MISSING_FIELD_PATH_TO_KEY[path])
+      .filter((key): key is ProfileExtractKey => Boolean(key));
+
+    const resolvedLowConfidenceKeys = Array.from(
+      new Set(highlightKeys.filter((key) => !resolvedMissingKeys.includes(key)))
+    );
+
+    setMissingExtractedFields(resolvedMissingKeys.map((key) => EXTRACT_KEY_TO_LABEL[key]));
+    setLowConfidenceFields(resolvedLowConfidenceKeys.map((key) => EXTRACT_KEY_TO_LABEL[key]));
+    setExtractionConfidence(
+      typeof systemFlags?.confidence_score === "number" ? systemFlags.confidence_score : null
+    );
     setExtractedFields(filled);
   }
 
@@ -637,6 +744,24 @@ export default function ProfilePage() {
     setNewEmail("");
   }
 
+  const renderExtractionHint = useCallback((label: string) => {
+    if (missingExtractedFields.includes(label)) {
+      return (
+        <p className="mt-1 text-xs text-amber-700 dark:text-amber-400">
+          Not found in marksheet. Please fill manually.
+        </p>
+      );
+    }
+    if (lowConfidenceFields.includes(label)) {
+      return (
+        <p className="mt-1 text-xs text-orange-700 dark:text-orange-400">
+          Extracted with low confidence. Please verify.
+        </p>
+      );
+    }
+    return null;
+  }, [missingExtractedFields, lowConfidenceFields]);
+
   if (loading) return <LoadingSpinner className="h-96" size="lg" />;
 
   return (
@@ -691,6 +816,9 @@ export default function ProfilePage() {
           <MarksheetUpload
             marksheetUrl={marksheetUrl}
             extractedFields={extractedFields}
+            missingFields={missingExtractedFields}
+            lowConfidenceFields={lowConfidenceFields}
+            confidenceScore={extractionConfidence}
             onUploaded={handleMarksheetUploaded}
           />
         </Card>
@@ -725,6 +853,7 @@ export default function ProfilePage() {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="md:col-span-2">
                   <Input {...register("full_name")} label="Full Name *" placeholder="John Doe" error={errors.full_name?.message} />
+                  {renderExtractionHint("Name")}
                 </div>
                 <Input {...register("phone")} label="Phone Number * (10 digits)" placeholder="9876543210" error={errors.phone?.message} />
                 <Input {...register("date_of_birth")} label="Date of Birth" type="date" error={errors.date_of_birth?.message} />
@@ -761,30 +890,43 @@ export default function ProfilePage() {
                   placeholder="123456789"
                   error={errors.roll_number?.message}
                 />
+                {renderExtractionHint("Roll Number")}
                 <Controller
                   name="branch"
                   control={control}
                   render={({ field }) => (
-                    <BranchSelect
-                      label="Branch *"
-                      value={(field.value as BranchValue) ?? ""}
-                      onChange={(val) => field.onChange(val)}
-                      error={errors.branch?.message}
-                    />
+                    <div>
+                      <BranchSelect
+                        label="Branch *"
+                        value={(field.value as BranchValue) ?? ""}
+                        onChange={(val) => field.onChange(val)}
+                        error={errors.branch?.message}
+                      />
+                      {renderExtractionHint("Branch")}
+                    </div>
                   )}
                 />
-                <Input {...register("semester")} label="Semester *" type="number" min={1} max={10} error={errors.semester?.message} />
-                <Input {...register("cgpa")} label="CGPA *" type="number" step="0.01" min={0} max={10} placeholder="8.50" error={errors.cgpa?.message} />
-                <Input
-                  {...register("sgpa")}
-                  label="SGPA (Semester GPA)"
-                  type="number"
-                  step="0.01"
-                  min={0}
-                  max={10}
-                  placeholder="Auto-filled from marksheet"
-                  error={errors.sgpa?.message}
-                />
+                <div>
+                  <Input {...register("semester")} label="Semester *" type="number" min={1} max={10} error={errors.semester?.message} />
+                  {renderExtractionHint("Semester")}
+                </div>
+                <div>
+                  <Input {...register("cgpa")} label="CGPA *" type="number" step="0.01" min={0} max={10} placeholder="8.50" error={errors.cgpa?.message} />
+                  {renderExtractionHint("CGPA")}
+                </div>
+                <div>
+                  <Input
+                    {...register("sgpa")}
+                    label="SGPA (Semester GPA)"
+                    type="number"
+                    step="0.01"
+                    min={0}
+                    max={10}
+                    placeholder="Auto-filled from marksheet"
+                    error={errors.sgpa?.message}
+                  />
+                  {renderExtractionHint("SGPA")}
+                </div>
               </div>
 
               <div className="pt-4 border-t border-surface-200 dark:border-surface-700 space-y-4">

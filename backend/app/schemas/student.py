@@ -282,6 +282,8 @@ class AvatarUploadResponse(BaseModel):
 class MarksheetUploadResponse(BaseModel):
     marksheet_url: str
     extracted_data: dict  # {roll_number, full_name, semester, branch, sgpa}
+    system_flags: Optional[dict] = None
+    ui_instructions: Optional[dict] = None
     message: str
 
 

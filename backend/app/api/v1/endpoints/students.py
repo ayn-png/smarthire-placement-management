@@ -103,6 +103,8 @@ async def upload_marksheet(
     return MarksheetUploadResponse(
         marksheet_url=marksheet_url,
         extracted_data=extracted_data,
+        system_flags=extracted_data.get("system_flags"),
+        ui_instructions=extracted_data.get("ui_instructions"),
         message="Marksheet uploaded successfully",
     )
 

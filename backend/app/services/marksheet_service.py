@@ -1,13 +1,13 @@
-"""
-marksheet_service.py — AI Marksheet Extraction Agent
------------------------------------------------------
-Uploads a marksheet from a Cloudinary URL, extracts text via a 5-method
-cascade (PyMuPDF → pdfplumber → pypdf → OCR), then calls OpenAI GPT-4o-mini
-via LangChain to extract structured student data.
+"""AI marksheet extraction service used by student profile auto-fill.
 
-Returns: {"roll_number", "full_name", "semester", "branch", "sgpa"} — any
-field not found is None. Non-fatal: if OpenAI is not configured or extraction
-fails, returns all-None dict so the upload still succeeds.
+The service:
+1) Downloads marksheet from Cloudinary URL
+2) Extracts text via a PDF/OCR cascade
+3) Uses OpenAI/OpenRouter-compatible LLM extraction
+4) Returns structured JSON payload for UI verification
+
+To avoid regressions in existing consumers, the returned dict also includes
+legacy top-level aliases: roll_number, full_name, semester, branch, sgpa, cgpa.
 """
 
 import asyncio
@@ -16,7 +16,7 @@ import logging
 import os
 import re
 import tempfile
-from typing import Optional
+from typing import Any, Optional
 
 import httpx
 
@@ -24,14 +24,423 @@ from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
+_VALID_BRANCHES = {"CSE", "ECE", "ME", "CE", "EE", "IT", "AI", "Other"}
+_VALID_SUBJECT_STATUS = {"Pass", "Fail", "KT"}
+_POPUP_MESSAGE = (
+    "Please review all extracted details carefully before saving your profile. "
+    "You can edit any incorrect information."
+)
+
+
+def _empty_structured_payload() -> dict:
+    return {
+        "student_profile": {
+            "full_name": None,
+            "roll_number": None,
+            "branch": None,
+            "current_semester": None,
+            "sgpa": None,
+            "cgpa": None,
+        },
+        "subjects": [],
+        "system_flags": {
+            "needs_review": True,
+            "missing_fields": [
+                "student_profile.full_name",
+                "student_profile.roll_number",
+                "student_profile.branch",
+                "student_profile.current_semester",
+                "student_profile.sgpa",
+                "student_profile.cgpa",
+                "subjects",
+            ],
+            "confidence_score": 0.0,
+        },
+        "ui_instructions": {
+            "show_popup": True,
+            "popup_message": _POPUP_MESSAGE,
+            "highlight_fields": [
+                "student_profile.full_name",
+                "student_profile.roll_number",
+                "student_profile.branch",
+                "student_profile.current_semester",
+                "student_profile.sgpa",
+                "student_profile.cgpa",
+                "subjects",
+            ],
+        },
+    }
+
+
+def _with_legacy_aliases(payload: dict) -> dict:
+    """Add legacy flat keys so existing UI auto-fill code keeps working."""
+    profile = payload.get("student_profile", {})
+    result = dict(payload)
+    result["roll_number"] = profile.get("roll_number")
+    result["full_name"] = profile.get("full_name")
+    result["semester"] = profile.get("current_semester")
+    result["branch"] = profile.get("branch")
+    result["sgpa"] = profile.get("sgpa")
+    result["cgpa"] = profile.get("cgpa")
+    return result
+
+
+def _clean_str(value: Any) -> Optional[str]:
+    if value is None:
+        return None
+    cleaned = str(value).strip()
+    return cleaned if cleaned else None
+
+
+def _to_int(value: Any, minimum: Optional[int] = None, maximum: Optional[int] = None) -> Optional[int]:
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        return None
+    if minimum is not None and parsed < minimum:
+        return None
+    if maximum is not None and parsed > maximum:
+        return None
+    return parsed
+
+
+def _to_float(value: Any, minimum: Optional[float] = None, maximum: Optional[float] = None) -> Optional[float]:
+    try:
+        parsed = round(float(value), 2)
+    except (TypeError, ValueError):
+        return None
+    if minimum is not None and parsed < minimum:
+        return None
+    if maximum is not None and parsed > maximum:
+        return None
+    return parsed
+
+def _normalize_roll_number_for_extraction(value: Any) -> Optional[str]:
+    cleaned = _clean_str(value)
+    if not cleaned:
+        return None
+
+    cleaned = cleaned.strip().strip(".,;:")
+    cleaned = re.sub(r"\s+", "", cleaned)
+    cleaned = re.sub(r"[^A-Za-z0-9/\-]", "", cleaned)
+    if not cleaned:
+        return None
+
+    return cleaned.upper()
+
+
+def _normalize_full_name_for_extraction(value: Any) -> Optional[str]:
+    cleaned = _clean_str(value)
+    if not cleaned:
+        return None
+
+    cleaned = re.sub(r"\s+", " ", cleaned).strip(" .,:;-")
+    cleaned = re.split(
+        r"\b(?:roll|enrollment|enrolment|enrollement|sgpa|cgpa|semester|sem)\b",
+        cleaned,
+        maxsplit=1,
+        flags=re.IGNORECASE,
+    )[0].strip(" .,:;-")
+
+    if len(cleaned) < 2 or re.search(r"\d", cleaned):
+        return None
+
+    return cleaned[:80].title()
+
+
+def _parse_semester_token(value: Any) -> Optional[int]:
+    sem = _clean_str(value)
+    if not sem:
+        return None
+
+    token = re.sub(r"(?i)(st|nd|rd|th)$", "", sem.strip()).upper()
+    roman_map = {
+        "I": 1,
+        "II": 2,
+        "III": 3,
+        "IV": 4,
+        "V": 5,
+        "VI": 6,
+        "VII": 7,
+        "VIII": 8,
+        "IX": 9,
+        "X": 10,
+    }
+    if token in roman_map:
+        return roman_map[token]
+
+    try:
+        parsed = int(token)
+    except ValueError:
+        return None
+
+    if 1 <= parsed <= 10:
+        return parsed
+    return None
+
+
+def _extract_score_from_text(text: str, metric: str) -> Optional[float]:
+    pattern = rf"\b{metric}\b(?:\s*\([^\n\r)]{{0,50}}\))?\s*[:=\-]\s*(\d{{1,2}}(?:\.\d{{1,2}})?)"
+    match = re.search(pattern, text, re.IGNORECASE)
+    if not match:
+        return None
+
+    try:
+        value = float(match.group(1))
+    except ValueError:
+        return None
+
+    if 0.0 <= value <= 10.0:
+        return round(value, 2)
+    return None
+
+
+def _normalize_branch(raw_branch: Any) -> Optional[str]:
+    branch = _clean_str(raw_branch)
+    if not branch:
+        return None
+
+    if branch in _VALID_BRANCHES:
+        return branch
+
+    lowered = branch.lower()
+    branch_map = {
+        "computer science": "CSE",
+        "computer science and engineering": "CSE",
+        "computer science engineering": "CSE",
+        "b.tech cse": "CSE",
+        "b.e. cs": "CSE",
+        "cse": "CSE",
+        "cs": "CSE",
+        "artificial intelligence": "AI",
+        "artificial intelligence and machine learning": "AI",
+        "artificial intelligence & machine learning": "AI",
+        "ai and ml": "AI",
+        "ai & ml": "AI",
+        "aiml": "AI",
+        "ai/ml": "AI",
+        "b.tech ai": "AI",
+        "ai": "AI",
+        "electronics and communication": "ECE",
+        "electronics and communication engineering": "ECE",
+        "electronics": "ECE",
+        "e&c": "ECE",
+        "ece": "ECE",
+        "mechanical": "ME",
+        "mechanical engineering": "ME",
+        "me": "ME",
+        "civil": "CE",
+        "civil engineering": "CE",
+        "ce": "CE",
+        "electrical": "EE",
+        "electrical engineering": "EE",
+        "electrical and electronics": "EE",
+        "eee": "EE",
+        "ee": "EE",
+        "information technology": "IT",
+        "b.tech it": "IT",
+        "it": "IT",
+    }
+    if lowered in branch_map:
+        return branch_map[lowered]
+
+    for pattern, code in branch_map.items():
+        if pattern in lowered:
+            return code
+
+    return "Other"
+
+
+def _normalize_subject_status(raw_status: Any, grade: Optional[str]) -> Optional[str]:
+    status = _clean_str(raw_status)
+    if status:
+        lower = status.lower()
+        if "kt" in lower or "backlog" in lower or "supplementary" in lower:
+            return "KT"
+        if "fail" in lower or lower == "f":
+            return "Fail"
+        if "pass" in lower or "clear" in lower:
+            return "Pass"
+
+    if grade:
+        grade_upper = grade.upper()
+        if "KT" in grade_upper or "BACK" in grade_upper:
+            return "KT"
+        if grade_upper in {"F", "FAIL", "RA", "AB", "U", "FF"}:
+            return "Fail"
+        return "Pass"
+
+    return None
+
+
+def _sanitize_student_profile(raw_profile: Any) -> dict:
+    profile = raw_profile if isinstance(raw_profile, dict) else {}
+
+    return {
+        "full_name": _normalize_full_name_for_extraction(profile.get("full_name")),
+        "roll_number": _normalize_roll_number_for_extraction(profile.get("roll_number")),
+        "branch": _normalize_branch(profile.get("branch")),
+        "current_semester": _parse_semester_token(profile.get("current_semester")),
+        "sgpa": _to_float(profile.get("sgpa"), minimum=0.0, maximum=10.0),
+        "cgpa": _to_float(profile.get("cgpa"), minimum=0.0, maximum=10.0),
+    }
+
+
+def _sanitize_subjects(raw_subjects: Any) -> list:
+    if not isinstance(raw_subjects, list):
+        return []
+
+    cleaned_subjects = []
+    for row in raw_subjects:
+        if not isinstance(row, dict):
+            continue
+
+        subject_name = _clean_str(row.get("subject_name"))
+        subject_code = _clean_str(row.get("subject_code"))
+        credits = _to_float(row.get("credits"), minimum=0.0)
+        marks_obtained = _to_float(row.get("marks_obtained"), minimum=0.0)
+        grade = _clean_str(row.get("grade"))
+        if grade:
+            grade = grade.upper()
+        status = _normalize_subject_status(row.get("status"), grade)
+        if status not in _VALID_SUBJECT_STATUS:
+            status = None
+
+        # Ignore completely empty rows from OCR/LLM noise.
+        if not any([subject_name, subject_code, credits is not None, marks_obtained is not None, grade, status]):
+            continue
+
+        cleaned_subjects.append(
+            {
+                "subject_name": subject_name,
+                "subject_code": subject_code,
+                "credits": credits,
+                "marks_obtained": marks_obtained,
+                "grade": grade,
+                "status": status,
+            }
+        )
+
+    return cleaned_subjects
+
+
+def _collect_missing_fields(student_profile: dict, subjects: list) -> list[str]:
+    missing = []
+    for key in ("full_name", "roll_number", "branch", "current_semester", "sgpa", "cgpa"):
+        if student_profile.get(key) is None:
+            missing.append(f"student_profile.{key}")
+
+    if not subjects:
+        missing.append("subjects")
+    else:
+        for idx, subject in enumerate(subjects):
+            for key in ("subject_name", "subject_code", "credits", "marks_obtained", "grade", "status"):
+                if subject.get(key) is None:
+                    missing.append(f"subjects[{idx}].{key}")
+
+    return missing
+
+
+def _collect_low_confidence_fields(student_profile: dict, subjects: list) -> list[str]:
+    low_conf = []
+    if student_profile.get("branch") == "Other":
+        low_conf.append("student_profile.branch")
+
+    if student_profile.get("full_name") and len(student_profile["full_name"]) < 3:
+        low_conf.append("student_profile.full_name")
+
+    if subjects and all(s.get("subject_code") is None for s in subjects):
+        low_conf.append("subjects")
+
+    for idx, subject in enumerate(subjects):
+        if subject.get("grade") and subject.get("status") is None:
+            low_conf.append(f"subjects[{idx}].status")
+
+    return low_conf
+
+
+def _calculate_confidence_score(student_profile: dict, subjects: list) -> float:
+    profile_fields = ("full_name", "roll_number", "branch", "current_semester", "sgpa", "cgpa")
+    profile_filled = sum(1 for key in profile_fields if student_profile.get(key) is not None)
+    profile_score = profile_filled / len(profile_fields)
+
+    if subjects:
+        subject_field_total = len(subjects) * 6
+        subject_filled = 0
+        for subject in subjects:
+            for key in ("subject_name", "subject_code", "credits", "marks_obtained", "grade", "status"):
+                if subject.get(key) is not None:
+                    subject_filled += 1
+        subject_score = subject_filled / subject_field_total if subject_field_total else 0.0
+    else:
+        subject_score = 0.0
+
+    score = (0.65 * profile_score) + (0.35 * subject_score)
+
+    if not subjects:
+        score -= 0.15
+    if student_profile.get("branch") == "Other":
+        score -= 0.05
+    if student_profile.get("sgpa") is None and student_profile.get("cgpa") is None:
+        score -= 0.05
+
+    return round(max(0.0, min(1.0, score)), 2)
+
+
+def _build_structured_payload(student_profile: Any, subjects: Any) -> dict:
+    cleaned_profile = _sanitize_student_profile(student_profile)
+    cleaned_subjects = _sanitize_subjects(subjects)
+
+    missing_fields = _collect_missing_fields(cleaned_profile, cleaned_subjects)
+    low_confidence_fields = _collect_low_confidence_fields(cleaned_profile, cleaned_subjects)
+    confidence_score = _calculate_confidence_score(cleaned_profile, cleaned_subjects)
+
+    # Highlight fields that are missing or low confidence.
+    highlight_fields = []
+    seen = set()
+    for key in [*missing_fields, *low_confidence_fields]:
+        if key not in seen:
+            seen.add(key)
+            highlight_fields.append(key)
+
+    return {
+        "student_profile": cleaned_profile,
+        "subjects": cleaned_subjects,
+        "system_flags": {
+            "needs_review": True,
+            "missing_fields": missing_fields,
+            "confidence_score": confidence_score,
+        },
+        "ui_instructions": {
+            "show_popup": True,
+            "popup_message": _POPUP_MESSAGE,
+            "highlight_fields": highlight_fields,
+        },
+    }
+
+
+def _sanitize_extraction_payload(raw_payload: Any) -> dict:
+    if not isinstance(raw_payload, dict):
+        return _empty_structured_payload()
+
+    return _build_structured_payload(
+        student_profile=raw_payload.get("student_profile"),
+        subjects=raw_payload.get("subjects"),
+    )
+
 
 async def extract_marksheet_data(marksheet_url: str) -> dict:
     """
-    Download the marksheet from Cloudinary and extract student data using OpenAI.
-    Returns dict with keys: roll_number, full_name, semester, branch, sgpa, cgpa.
-    All values default to None if not found or on any error.
+    Download marksheet and extract structured profile data.
+
+    Returns required structured payload plus legacy aliases:
+    - student_profile/full_name, roll_number, branch, current_semester, sgpa, cgpa
+    - subjects[]
+    - system_flags
+    - ui_instructions
+    - roll_number, full_name, semester, branch, sgpa, cgpa (compat)
     """
-    empty = {"roll_number": None, "full_name": None, "semester": None, "branch": None, "sgpa": None, "cgpa": None}
+    empty = _with_legacy_aliases(_empty_structured_payload())
 
     if not (settings.OPENAI_API_KEY or settings.OPENROUTER_API_KEY):
         logger.warning("[marksheet] OPENAI_API_KEY/OPENROUTER_API_KEY not set — skipping extraction")
@@ -163,7 +572,7 @@ def _extract_text(file_path: str, ext: str) -> str:
 
 async def _call_openai(text: str) -> dict:
     """Call an OpenAI-compatible LLM (OpenAI/OpenRouter) to extract structured data."""
-    empty = {"roll_number": None, "full_name": None, "semester": None, "branch": None, "sgpa": None, "cgpa": None}
+    empty = _with_legacy_aliases(_empty_structured_payload())
 
     try:
         from langchain_openai import ChatOpenAI  # type: ignore
@@ -184,35 +593,71 @@ async def _call_openai(text: str) -> dict:
 
         llm = ChatOpenAI(**llm_kwargs)
 
-        prompt = f"""You are an expert at reading Indian university marksheets and grade cards.
-Extract the following fields from the marksheet text below.
+        prompt = f"""You are an AI assistant integrated into a student placement platform.
 
-Fields to extract:
-- roll_number: Student's roll number or enrollment number (string)
-- full_name: Student's full name (string)
-- semester: Current semester number as an integer (1-10)
-- branch: MUST be exactly one of these short codes:
-    CSE  → Computer Science Engineering / Computer Science / B.Tech CSE / B.E. CS
-    ECE  → Electronics and Communication Engineering / E&C / Electronics
-    ME   → Mechanical Engineering / Mechanical
-    CE   → Civil Engineering / Civil
-    EE   → Electrical Engineering / Electrical / EEE / Electrical & Electronics
-    IT   → Information Technology / B.Tech IT
-    Other → Any other branch (Chemical, Aerospace, Biotechnology, etc.)
-  Return ONLY the short code (e.g., "CSE", "ECE", "ME", "CE", "EE", "IT", or "Other").
-- sgpa: Semester GPA or SGPA as a decimal number between 0.0 and 10.0 (float)
-- cgpa: Cumulative GPA or CGPA as a decimal number between 0.0 and 10.0 (float)
+Your job has TWO responsibilities:
+1) Extract structured data from an Indian university marksheet
+2) Prepare it for auto-filling a student profile form with user verification
 
-IMPORTANT:
-- Return ONLY a valid JSON object with exactly these 6 keys: roll_number, full_name, semester, branch, sgpa, cgpa.
-- If a field is not found or unclear, use null.
-- Do NOT include any explanation or markdown formatting.
-- For semester, extract the number only (e.g., "Semester III" → 3, "6th Semester" → 6).
-- For sgpa, extract SGPA/semester GPA only.
-- For cgpa, extract CGPA/cumulative GPA only. These are different values; do not confuse them.
+STEP 1: EXTRACTION
+Extract the following fields from the marksheet text.
+
+Return ONLY valid JSON in this structure:
+{{
+    "student_profile": {{
+        "full_name": string or null,
+        "roll_number": string or null,
+        "branch": "CSE | ECE | ME | CE | EE | IT | AI | Other" or null,
+        "current_semester": number or null,
+        "sgpa": number or null,
+        "cgpa": number or null
+    }},
+    "subjects": [
+        {{
+            "subject_name": string or null,
+            "subject_code": string or null,
+            "credits": number or null,
+            "marks_obtained": number or null,
+            "grade": string or null,
+            "status": "Pass | Fail | KT" or null
+        }}
+    ],
+    "system_flags": {{
+        "needs_review": true,
+        "missing_fields": [list of fields that are null or unclear],
+        "confidence_score": number (0 to 1)
+    }},
+    "ui_instructions": {{
+        "show_popup": true,
+        "popup_message": "Please review all extracted details carefully before saving your profile. You can edit any incorrect information.",
+        "highlight_fields": [list of fields that are null or low confidence]
+    }}
+}}
+
+STEP 2: RULES
+- If any field is missing or unclear, set it to null.
+- Always normalize branch into allowed short codes.
+- Extract semester as an integer only.
+- SGPA and CGPA must be between 0 and 10.
+- Name labels may appear as: "Name of the Student", "Student Name", "Full Name".
+- Roll labels may appear as: "Roll No", "Roll Number", "Enrollment/Enrolment/Enrollement No".
+- SGPA/CGPA may use separators like ":", "-", or "=" and may include parenthetical text.
+- Semester can appear as "Semester IV", "Sem 4", or "4th Semester".
+- Identify failed subjects and mark status correctly.
+- Do NOT hallucinate missing data.
+
+STEP 3: UI BEHAVIOR (IMPORTANT)
+- Always set needs_review = true
+- Always set show_popup = true
+- Highlight fields that are null or low confidence
+
+STEP 4: OUTPUT CONSTRAINT
+- Return ONLY JSON
+- No explanation
+- No markdown
 
 Marksheet text:
-{text[:5000]}
+{text[:7000]}
 
 JSON output:"""
 
@@ -225,63 +670,8 @@ JSON output:"""
         raw = raw.strip()
 
         data = json.loads(raw)
-
-        # Sanitize and type-cast
-        result = {
-            "roll_number": str(data["roll_number"]).strip() if data.get("roll_number") is not None else None,
-            "full_name": str(data["full_name"]).strip() if data.get("full_name") is not None else None,
-            "semester": None,
-            "branch": str(data["branch"]).strip() if data.get("branch") is not None else None,
-            "sgpa": None,
-            "cgpa": None,
-        }
-
-        # Validate branch is one of the allowed short codes; fall back to "Other" if not
-        _VALID_BRANCHES = {"CSE", "ECE", "ME", "CE", "EE", "IT", "Other"}
-        if result["branch"] and result["branch"] not in _VALID_BRANCHES:
-            # Try to normalise common LLM deviations
-            _BRANCH_MAP = {
-                "computer science": "CSE", "cse": "CSE", "cs": "CSE",
-                "information technology": "IT", "it": "IT",
-                "electronics": "ECE", "ece": "ECE",
-                "electrical": "EE", "ee": "EE", "eee": "EE",
-                "mechanical": "ME", "me": "ME",
-                "civil": "CE", "ce": "CE",
-            }
-            normalised = _BRANCH_MAP.get(result["branch"].lower().strip())
-            result["branch"] = normalised if normalised else "Other"
-
-        # Safely cast semester
-        try:
-            sem = data.get("semester")
-            if sem is not None:
-                result["semester"] = int(sem)
-                if not 1 <= result["semester"] <= 10:
-                    result["semester"] = None
-        except (TypeError, ValueError):
-            result["semester"] = None
-
-        # Safely cast sgpa
-        try:
-            sgpa = data.get("sgpa")
-            if sgpa is not None:
-                result["sgpa"] = round(float(sgpa), 2)
-                if not 0.0 <= result["sgpa"] <= 10.0:
-                    result["sgpa"] = None
-        except (TypeError, ValueError):
-            result["sgpa"] = None
-
-        # Safely cast cgpa
-        try:
-            cgpa = data.get("cgpa")
-            if cgpa is not None:
-                result["cgpa"] = round(float(cgpa), 2)
-                if not 0.0 <= result["cgpa"] <= 10.0:
-                    result["cgpa"] = None
-        except (TypeError, ValueError):
-            result["cgpa"] = None
-
-        return result
+        structured = _sanitize_extraction_payload(data)
+        return _with_legacy_aliases(structured)
 
     except json.JSONDecodeError as e:
         logger.warning(f"[marksheet] JSON parse failed: {e}, raw={raw[:200]}")
@@ -293,46 +683,64 @@ JSON output:"""
 
 def _fallback_regex_extract(text: str) -> dict:
     """Fallback regex extraction when OpenAI JSON parsing fails."""
-    result = {"roll_number": None, "full_name": None, "semester": None, "branch": None, "sgpa": None, "cgpa": None}
+    profile = {
+        "full_name": None,
+        "roll_number": None,
+        "branch": None,
+        "current_semester": None,
+        "sgpa": None,
+        "cgpa": None,
+    }
 
-    # Roll number patterns
-    roll_match = re.search(r"(?:roll\s*(?:no|number|num)\.?|enrollment\s*(?:no|number)?)[:\s]+([A-Z0-9]+)", text, re.IGNORECASE)
+    # Roll number / enrollment patterns.
+    roll_match = re.search(
+        r"(?:\broll\s*(?:no|number|num)?\.?\b|\benrollment\s*(?:no|number|num)?\.?\b|\benrolment\s*(?:no|number|num)?\.?\b|\benrollement\s*(?:no|number|num)?\.?\b|\bregistration\s*(?:no|number|num)?\.?\b|\breg\.?\s*(?:no|number|num)\.?\b)\s*[:=\-]?\s*([A-Z0-9]+(?:[\-/ ][A-Z0-9]+){0,6})",
+        text,
+        re.IGNORECASE,
+    )
     if roll_match:
-        result["roll_number"] = roll_match.group(1).strip()
+        profile["roll_number"] = _normalize_roll_number_for_extraction(roll_match.group(1))
 
-    # SGPA pattern (must appear before CGPA to avoid false match)
-    sgpa_match = re.search(r"\bSGPA\b[:\s]+(\d+\.?\d*)", text, re.IGNORECASE)
-    if sgpa_match:
-        try:
-            val = float(sgpa_match.group(1))
-            if 0.0 <= val <= 10.0:
-                result["sgpa"] = round(val, 2)
-        except ValueError:
-            pass
+    # Full name patterns with common label variants.
+    name_match = re.search(
+        r"(?:\bname\s*of\s*(?:the\s*)?student(?:s)?\b|\bstudent\s*name\b|\bfull\s*name\b|\bname\b)\s*(?:[:=\-]|\s{2,})\s*([A-Za-z][A-Za-z\s\.'\-]{1,80})",
+        text,
+        re.IGNORECASE,
+    )
+    if name_match:
+        profile["full_name"] = _normalize_full_name_for_extraction(name_match.group(1))
 
-    # CGPA pattern
-    cgpa_match = re.search(r"\bCGPA\b[:\s]+(\d+\.?\d*)", text, re.IGNORECASE)
-    if cgpa_match:
-        try:
-            val = float(cgpa_match.group(1))
-            if 0.0 <= val <= 10.0:
-                result["cgpa"] = round(val, 2)
-        except ValueError:
-            pass
+    # SGPA/CGPA patterns support parenthetical labels and :, -, = separators.
+    profile["sgpa"] = _extract_score_from_text(text, "SGPA")
+    profile["cgpa"] = _extract_score_from_text(text, "CGPA")
 
-    # Semester pattern
-    sem_match = re.search(r"semester[:\s]+(?:([IVX]+|\d+))", text, re.IGNORECASE)
-    if sem_match:
-        sem_str = sem_match.group(1)
-        roman = {"I": 1, "II": 2, "III": 3, "IV": 4, "V": 5, "VI": 6, "VII": 7, "VIII": 8, "IX": 9, "X": 10}
-        if sem_str in roman:
-            result["semester"] = roman[sem_str]
-        else:
-            try:
-                val = int(sem_str)
-                if 1 <= val <= 10:
-                    result["semester"] = val
-            except ValueError:
-                pass
+    # Semester patterns like Semester IV, Sem 4, 4th Semester.
+    semester_patterns = [
+        r"\b(?:semester|sem)\s*(?:no\.?|number)?\s*[:=\-]?\s*([IVX]+|\d{1,2}(?:st|nd|rd|th)?)\b",
+        r"\b(\d{1,2}(?:st|nd|rd|th)?)\s*(?:semester|sem)\b",
+    ]
+    for pattern in semester_patterns:
+        sem_match = re.search(pattern, text, re.IGNORECASE)
+        if not sem_match:
+            continue
+        parsed_semester = _parse_semester_token(sem_match.group(1))
+        if parsed_semester is not None:
+            profile["current_semester"] = parsed_semester
+            break
 
-    return result
+    branch_patterns = {
+        "CSE": r"\b(cse|computer\s*science)\b",
+        "ECE": r"\b(ece|electronics\s*(and|&)\s*communication|electronics)\b",
+        "ME": r"\b(me|mechanical)\b",
+        "CE": r"\b(ce|civil)\b",
+        "EE": r"\b(ee|eee|electrical)\b",
+        "IT": r"\b(it|information\s*technology)\b",
+        "AI": r"\b(ai|aiml|artificial\s*intelligence|artificial\s*intelligence\s*(and|&)\s*machine\s*learning|ai\s*(and|&)\s*ml)\b",
+    }
+    for code, pattern in branch_patterns.items():
+        if re.search(pattern, text, re.IGNORECASE):
+            profile["branch"] = code
+            break
+
+    structured = _build_structured_payload(profile, subjects=[])
+    return _with_legacy_aliases(structured)

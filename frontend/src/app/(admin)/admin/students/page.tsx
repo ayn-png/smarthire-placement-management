@@ -15,7 +15,7 @@ import { StudentProfile } from "@/types";
 import { FadeIn } from "@/components/ui/Animations";
 import { getFileUrl } from "@/lib/utils";
 
-const BRANCHES = ["CSE", "ECE", "ME", "CE", "EE", "IT", "Other"];
+const BRANCHES = ["CSE", "ECE", "ME", "CE", "EE", "IT", "AI", "Other"];
 const PAGE_LIMIT = 20;
 
 export default function AdminStudentsPage() {

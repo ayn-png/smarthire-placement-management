@@ -12,6 +12,7 @@ export const BRANCH_OPTIONS = [
   { label: "CE",    value: "CE"    },
   { label: "EE",    value: "EE"    },
   { label: "IT",    value: "IT"    },
+  { label: "AI",    value: "AI"    },
   { label: "Other", value: "Other" },
 ] as const;
 

@@ -21,7 +21,7 @@ const STATUS_LABELS: Record<string, string> = {
   SELECTED: "Selected",
   REJECTED: "Rejected",
 };
-const BRANCHES = ["CSE", "IT", "ECE", "EEE", "ME", "CE", "CHE", "MCA", "MBA", "Other"];
+const BRANCHES = ["CSE", "IT", "AI", "ECE", "EEE", "ME", "CE", "CHE", "MCA", "MBA", "Other"];
 
 export default function DriveApplicationsPage() {
   const params = useParams();

@@ -96,6 +96,16 @@ export const studentService = {
         sgpa: number | null;
         cgpa: number | null;
       };
+      system_flags?: {
+        needs_review?: boolean;
+        missing_fields?: string[];
+        confidence_score?: number;
+      };
+      ui_instructions?: {
+        show_popup?: boolean;
+        popup_message?: string;
+        highlight_fields?: string[];
+      };
       message: string;
     }>("/students/marksheet", form).then((r) => r.data);
   },

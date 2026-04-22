@@ -374,7 +374,7 @@ export default function AdminPlacementDrivesPage() {
                 <div>
                   <label className="text-sm font-medium text-surface-700 dark:text-surface-300 block mb-2">Allowed Branches *</label>
                   <div className="grid grid-cols-3 gap-1.5">
-                    {["CSE", "IT", "ECE", "EEE", "ME", "CE", "CHE", "MCA", "MBA"].map((branch) => (
+                    {["CSE", "IT", "AI", "ECE", "EEE", "ME", "CE", "CHE", "MCA", "MBA"].map((branch) => (
                       <label key={branch} className="flex items-center gap-1.5 cursor-pointer">
                         <input type="checkbox" checked={form.eligible_branches.includes(branch)}
                           onChange={(e) => {

@@ -78,6 +78,7 @@ export default function AdminMarketJobsPage() {
             <option value="">All Branches</option>
             <option value="CSE">CSE</option>
             <option value="IT">IT</option>
+            <option value="AI">AI</option>
             <option value="ECE">ECE</option>
             <option value="ME">ME</option>
           </select>

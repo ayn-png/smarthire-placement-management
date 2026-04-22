@@ -11,7 +11,7 @@ import { formatDate, getStatusColor, extractErrorMsg } from "@/lib/utils";
 import { FadeIn } from "@/components/ui/Animations";
 
 const STATUSES = ["PENDING","UNDER_REVIEW","SHORTLISTED","INTERVIEW_SCHEDULED","SELECTED","REJECTED"];
-const BRANCHES = ["CSE","IT","ECE","EEE","ME","CE","CHE","MCA","MBA","Other"];
+const BRANCHES = ["CSE","IT","AI","ECE","EEE","ME","CE","CHE","MCA","MBA","Other"];
 const PAGE_LIMIT = 20;
 
 export default function AdminApplicationsPage() {
