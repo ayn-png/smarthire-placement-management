@@ -197,3 +197,61 @@ async def test_upload_marksheet_contract_with_metadata(client: AsyncClient, monk
     assert payload["extracted_data"]["cgpa"] == 8.2
     assert payload["system_flags"]["confidence_score"] == 0.78
     assert payload["ui_instructions"]["highlight_fields"] == ["subjects"]
+
+
+@pytest.mark.asyncio
+async def test_upload_resume_contract_with_autofill_metadata(client: AsyncClient, monkeypatch):
+    """POST /students/resume keeps the upload contract and can include autofill metadata."""
+
+    async def fake_save_resume(file, user_id):
+        return "https://cdn.example.com/resume.pdf"
+
+    async def fake_extract_resume_profile_data(_url):
+        return {
+            "roll_number": "123456789",
+            "full_name": "Test Student",
+            "semester": 6,
+            "branch": "CSE",
+            "sgpa": 8.4,
+            "cgpa": 8.2,
+            "phone": "9876543210",
+            "linkedin_url": "https://linkedin.com/in/test-student",
+            "github_url": "https://github.com/test-student",
+            "skills": ["Python", "React"],
+            "certifications": ["AWS"],
+            "system_flags": {
+                "needs_review": True,
+                "missing_fields": ["student_profile.roll_number"],
+                "confidence_score": 0.82,
+            },
+            "ui_instructions": {
+                "show_popup": True,
+                "popup_message": "Please review.",
+                "highlight_fields": ["student_profile.roll_number"],
+            },
+        }
+
+    monkeypatch.setattr("app.api.v1.endpoints.students.save_resume", fake_save_resume)
+    monkeypatch.setattr(
+        "app.services.resume_profile_extraction_service.extract_resume_profile_data",
+        fake_extract_resume_profile_data,
+    )
+
+    files = {"file": ("resume.pdf", b"fake-pdf-bytes", "application/pdf")}
+    resp = await client.post(
+        "/api/v1/students/resume",
+        headers=auth_headers("STUDENT"),
+        files=files,
+    )
+
+    assert resp.status_code == 200
+    payload = resp.json()
+
+    assert payload["resume_url"] == "https://cdn.example.com/resume.pdf"
+    assert payload["filename"] == "resume.pdf"
+    assert payload["message"] == "Resume uploaded successfully"
+    assert payload["extracted_data"]["full_name"] == "Test Student"
+    assert payload["extracted_data"]["phone"] == "9876543210"
+    assert payload["extracted_data"]["skills"] == ["Python", "React"]
+    assert payload["system_flags"]["confidence_score"] == 0.82
+    assert payload["ui_instructions"]["highlight_fields"] == ["student_profile.roll_number"]

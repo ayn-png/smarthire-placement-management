@@ -83,20 +83,21 @@ async def save_aadhar_doc(file: UploadFile, user_id: str) -> str:
 def resume_exists(file_url: str) -> bool:
     """
     Return True if the resume file exists.
-    For Cloudinary URLs, verifies the file exists by making a HEAD request.
+    For Cloudinary URLs, verifies the file exists by making a lightweight GET
+    request against the stored asset URL. Cloudinary raw assets do not always
+    behave reliably with HEAD requests, so GET is the safer existence check.
     For legacy local files, checks disk.
     """
     try:
         # Cloudinary URLs start with https://res.cloudinary.com
         if "cloudinary.com" in file_url:
-            # FIXED: Actually verify Cloudinary file exists with HEAD request
+            # Verify Cloudinary file exists without downloading the full asset.
             try:
-                # Use httpx synchronously for file existence check
-                with httpx.Client(timeout=5.0) as client:
-                    response = client.head(file_url, follow_redirects=True)
-                    if response.status_code == 200:
-                        return True
-                    else:
+                with httpx.Client(timeout=5.0, follow_redirects=True) as client:
+                    with client.stream("GET", file_url) as response:
+                        if 200 <= response.status_code < 300:
+                            return True
+
                         logger.warning(
                             f"Cloudinary file not found or inaccessible: {file_url} "
                             f"(status: {response.status_code})"
@@ -104,6 +105,9 @@ def resume_exists(file_url: str) -> bool:
                         return False
             except httpx.RequestError as e:
                 logger.error(f"Failed to verify Cloudinary URL {file_url}: {str(e)}")
+                return False
+            except Exception as e:
+                logger.error(f"Unexpected error verifying Cloudinary URL {file_url}: {str(e)}")
                 return False
 
         # Legacy local file check

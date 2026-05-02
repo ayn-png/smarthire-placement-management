@@ -32,6 +32,10 @@ def _doc_to_dict(doc_snapshot) -> dict | None:
     return result
 
 
+def _is_complete_profile_doc(doc: dict | None) -> bool:
+    return bool(doc and doc.get("full_name") and doc.get("roll_number"))
+
+
 class StudentService:
     def __init__(self, db):
         self.db = db
@@ -39,8 +43,8 @@ class StudentService:
     async def create_profile(self, user: dict, data: StudentProfileCreate) -> StudentProfileResponse:
         user_id = user["id"]
 
-        # Fetch any existing document — may be a stub created by avatar/marksheet
-        # uploads (set with merge=True) that only has avatar_url / marksheet_url.
+        # Fetch any existing document — may be a stub created by avatar/resume
+        # uploads (set with merge=True) that only has avatar_url / resume_url.
         existing_doc = await asyncio.to_thread(
             self.db.collection("student_profiles").document(user_id).get
         )
@@ -48,9 +52,9 @@ class StudentService:
 
         # A REAL conflict is when this student already has a complete profile
         # (roll_number + full_name are both set). A stub document produced by
-        # avatar/marksheet pre-uploads does NOT have these fields and is fine
+        # avatar/resume pre-uploads does NOT have these fields and is fine
         # to overwrite with the full profile.
-        if existing_data.get("roll_number") and existing_data.get("full_name"):
+        if _is_complete_profile_doc(existing_data):
             raise ConflictException("Profile already exists")
 
         # Check for duplicate roll number across OTHER students only.
@@ -65,10 +69,6 @@ class StudentService:
         roll_docs = list(roll_query)
         if roll_docs and roll_docs[0].id != user_id:
             raise ConflictException("Roll number already registered")
-
-        if not data.marksheet_url:
-            from fastapi import HTTPException
-            raise HTTPException(status_code=422, detail="Marksheet upload is required before saving profile")
 
         now = utcnow()
         profile_doc = {
@@ -104,7 +104,10 @@ class StudentService:
         )
         if not doc.exists:
             raise NotFoundException("Profile")
-        return self._to_response(_doc_to_dict(doc))
+        profile_doc = _doc_to_dict(doc)
+        if not _is_complete_profile_doc(profile_doc):
+            raise NotFoundException("Profile")
+        return self._to_response(profile_doc)
 
     async def get_profile_by_id(self, profile_id: str) -> StudentProfileResponse:
         if not profile_id:
@@ -114,7 +117,10 @@ class StudentService:
         )
         if not doc.exists:
             raise NotFoundException("Profile")
-        return self._to_response(_doc_to_dict(doc))
+        profile_doc = _doc_to_dict(doc)
+        if not _is_complete_profile_doc(profile_doc):
+            raise NotFoundException("Profile")
+        return self._to_response(profile_doc)
 
     async def update_profile(self, user: dict, data: StudentProfileUpdate) -> StudentProfileResponse:
         user_id = user["id"]
@@ -135,13 +141,9 @@ class StudentService:
         profile_doc = await asyncio.to_thread(profile_ref.get)
         if not profile_doc.exists:
             raise NotFoundException("Profile")
-
         existing_dict = profile_doc.to_dict() or {}
-        existing_marksheet = existing_dict.get("marksheet_url")
-        incoming_marksheet = update_data.get("marksheet_url", existing_marksheet)
-        if not existing_marksheet and not incoming_marksheet:
-            from fastapi import HTTPException
-            raise HTTPException(status_code=422, detail="Marksheet upload is required to update profile")
+        if not _is_complete_profile_doc(existing_dict):
+            raise NotFoundException("Profile")
 
         await asyncio.to_thread(profile_ref.update, update_data)
 
@@ -153,24 +155,16 @@ class StudentService:
         """Update resume URL for student profile. Deletes old Cloudinary file if different."""
         import logging
         from app.utils.file_upload import delete_file
-        from fastapi import HTTPException
 
         logger = logging.getLogger(__name__)
         user_id = user["id"]
 
-        # Check profile exists and clean up old resume if any
+        # Clean up old resume if any, even when the profile document is still a stub.
         doc = await asyncio.to_thread(
             self.db.collection("student_profiles").document(user_id).get
         )
-
-        # Guard: profile must exist before we can attach a resume to it
-        if not doc.exists:
-            raise HTTPException(
-                status_code=422,
-                detail="Please complete your student profile before uploading a resume.",
-            )
-
-        old_resume_url = doc.to_dict().get("resume_url")
+        existing_data = doc.to_dict() if doc.exists else {}
+        old_resume_url = existing_data.get("resume_url")
         if old_resume_url and old_resume_url != resume_url:
             try:
                 if delete_file(old_resume_url):
@@ -178,7 +172,7 @@ class StudentService:
             except Exception as e:
                 logger.error(f"Error deleting old resume {old_resume_url}: {e}")
 
-        # Use merge=True (set) so it never raises NotFound even if doc was just created
+        # Use merge=True so resume-first flows can create a stub profile document.
         await asyncio.to_thread(
             self.db.collection("student_profiles").document(user_id).set,
             {"resume_url": resume_url, "updated_at": utcnow()},
@@ -229,11 +223,11 @@ class StudentService:
 
         all_profiles = [_doc_to_dict(d) for d in docs if d.exists]
 
-        # Filter out stub profiles (created by avatar/marksheet uploads before profile completion)
+        # Filter out stub profiles created by pre-profile uploads.
         # A complete profile must have both full_name and roll_number set
         all_profiles = [
             p for p in all_profiles
-            if p and p.get("full_name") and p.get("roll_number")
+            if _is_complete_profile_doc(p)
         ]
 
         # Python-side filters for CGPA and skills (Firestore range queries need composite indexes)

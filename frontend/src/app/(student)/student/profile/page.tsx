@@ -79,7 +79,18 @@ type ExtractionUiInstructions = {
   highlight_fields?: string[];
 };
 
-type ProfileExtractKey = "full_name" | "roll_number" | "semester" | "branch" | "sgpa" | "cgpa";
+type ProfileExtractKey =
+  | "full_name"
+  | "roll_number"
+  | "semester"
+  | "branch"
+  | "sgpa"
+  | "cgpa"
+  | "phone"
+  | "linkedin_url"
+  | "github_url"
+  | "skills"
+  | "certifications";
 
 const EXTRACT_KEY_TO_LABEL: Record<ProfileExtractKey, string> = {
   full_name: "Name",
@@ -88,6 +99,11 @@ const EXTRACT_KEY_TO_LABEL: Record<ProfileExtractKey, string> = {
   branch: "Branch",
   sgpa: "SGPA",
   cgpa: "CGPA",
+  phone: "Phone",
+  linkedin_url: "LinkedIn URL",
+  github_url: "GitHub URL",
+  skills: "Skills",
+  certifications: "Certifications",
 };
 
 const MISSING_FIELD_PATH_TO_KEY: Record<string, ProfileExtractKey> = {
@@ -97,6 +113,11 @@ const MISSING_FIELD_PATH_TO_KEY: Record<string, ProfileExtractKey> = {
   "student_profile.branch": "branch",
   "student_profile.sgpa": "sgpa",
   "student_profile.cgpa": "cgpa",
+  "student_profile.phone": "phone",
+  "student_profile.linkedin_url": "linkedin_url",
+  "student_profile.github_url": "github_url",
+  "student_profile.skills": "skills",
+  "student_profile.certifications": "certifications",
 };
 
 // ── Avatar Upload Widget ────────────────────────────────────────────────────
@@ -199,16 +220,16 @@ function AvatarUpload({
   );
 }
 
-// ── Marksheet Upload Widget ─────────────────────────────────────────────────
-function MarksheetUpload({
-  marksheetUrl,
+// ── Resume Autofill Upload Widget ───────────────────────────────────────────
+function ResumeAutofillUpload({
+  resumeUrl,
   onUploaded,
   extractedFields,
   missingFields,
   lowConfidenceFields,
   confidenceScore,
 }: {
-  marksheetUrl?: string | null;
+  resumeUrl?: string | null;
   extractedFields?: string[];
   missingFields?: string[];
   lowConfidenceFields?: string[];
@@ -220,6 +241,11 @@ function MarksheetUpload({
     branch: string | null;
     sgpa: number | null;
     cgpa: number | null;
+    phone?: string | null;
+    linkedin_url?: string | null;
+    github_url?: string | null;
+    skills?: string[];
+    certifications?: string[];
   }, systemFlags?: {
     needs_review?: boolean;
     missing_fields?: string[];
@@ -232,16 +258,19 @@ function MarksheetUpload({
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
-  const [uploaded, setUploaded] = useState(!!marksheetUrl);
+  const [uploaded, setUploaded] = useState(!!resumeUrl);
   const [extracting, setExtracting] = useState(false);
   const [error, setError] = useState("");
+
+  useEffect(() => {
+    setUploaded(!!resumeUrl);
+  }, [resumeUrl]);
 
   async function handleFile(file: File) {
     const MAX_SIZE = 5 * 1024 * 1024;
     if (file.size > MAX_SIZE) { setError("File must be smaller than 5 MB"); return; }
-    const allowed = ["application/pdf", "image/jpeg", "image/png"];
-    const isOk = allowed.includes(file.type) || file.name.toLowerCase().endsWith(".pdf");
-    if (!isOk) { setError("Only PDF, JPEG, or PNG files are allowed"); return; }
+    const isOk = file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf");
+    if (!isOk) { setError("Only PDF files are allowed"); return; }
 
     setError("");
     setUploading(true);
@@ -249,9 +278,26 @@ function MarksheetUpload({
 
     try {
       setExtracting(true);
-      const result = await studentService.uploadMarksheet(file);
+      const result = await studentService.uploadResume(file);
       setUploaded(true);
-      onUploaded(result.marksheet_url, result.extracted_data, result.system_flags, result.ui_instructions);
+      onUploaded(
+        result.resume_url,
+        {
+          roll_number: result.extracted_data?.roll_number ?? null,
+          full_name: result.extracted_data?.full_name ?? null,
+          semester: result.extracted_data?.semester ?? null,
+          branch: result.extracted_data?.branch ?? null,
+          sgpa: result.extracted_data?.sgpa ?? null,
+          cgpa: result.extracted_data?.cgpa ?? null,
+          phone: result.extracted_data?.phone ?? null,
+          linkedin_url: result.extracted_data?.linkedin_url ?? null,
+          github_url: result.extracted_data?.github_url ?? null,
+          skills: result.extracted_data?.skills ?? [],
+          certifications: result.extracted_data?.certifications ?? [],
+        },
+        result.system_flags,
+        result.ui_instructions,
+      );
     } catch (err: unknown) {
       const msg = extractErrorMsg(err, "Upload failed");
       setError(msg);
@@ -289,28 +335,28 @@ function MarksheetUpload({
           <div className="flex flex-col items-center gap-2">
             <Loader2 className="w-8 h-8 text-primary-500 animate-spin" />
             <p className="text-sm text-surface-500 dark:text-surface-400">
-              {extracting ? "Uploading & extracting data with AI…" : "Uploading…"}
+              {extracting ? "Uploading and extracting profile details with AI..." : "Uploading..."}
             </p>
           </div>
         ) : uploaded ? (
           <div className="flex flex-col items-center gap-2">
             <CheckCircle className="w-8 h-8 text-emerald-500" />
-            <p className="text-sm font-medium text-emerald-700 dark:text-emerald-400">Marksheet uploaded</p>
+            <p className="text-sm font-medium text-emerald-700 dark:text-emerald-400">Resume uploaded</p>
             <p className="text-xs text-surface-400 dark:text-surface-500">Click to replace</p>
           </div>
         ) : (
           <div className="flex flex-col items-center gap-2">
             <FileText className="w-8 h-8 text-surface-400 dark:text-surface-500" />
             <p className="text-sm font-medium text-surface-700 dark:text-surface-300">
-              Upload your latest marksheet
+              Upload your resume for profile autofill
             </p>
             <p className="text-xs text-surface-400 dark:text-surface-500">
-              PDF, JPEG, or PNG · max 5 MB
+              PDF only · max 5 MB
             </p>
             <div className="flex items-center gap-1.5 mt-1 px-3 py-1.5 bg-primary-50 dark:bg-primary-900/20 rounded-lg">
               <Upload className="w-3.5 h-3.5 text-primary-500" />
               <span className="text-xs text-primary-600 dark:text-primary-400 font-medium">
-                AI will auto-fill Roll No, Name, Branch, SGPA &amp; CGPA
+                AI will auto-fill profile fields like name, phone, links, branch and scores where available
               </span>
             </div>
           </div>
@@ -321,7 +367,7 @@ function MarksheetUpload({
         <div className="flex items-start gap-2 px-3 py-2 bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800/40 rounded-lg">
           <AlertCircle className="w-4 h-4 text-amber-500 flex-shrink-0 mt-0.5" />
           <p className="text-xs text-amber-700 dark:text-amber-400">
-            Marksheet is required to save your profile
+            Resume autofill is optional. You can still complete the profile manually.
           </p>
         </div>
       )}
@@ -353,14 +399,14 @@ function MarksheetUpload({
             <div className="flex items-start gap-2 px-3 py-2.5 bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800/40 rounded-lg">
               <AlertCircle className="w-4 h-4 text-amber-500 flex-shrink-0 mt-0.5" />
               <p className="text-xs text-amber-700 dark:text-amber-400">
-                <span className="font-semibold">Not found in marksheet:</span> {missingFields.join(", ")}. Please fill these manually.
+                <span className="font-semibold">Not found in resume:</span> {missingFields.join(", ")}. Please fill these manually.
               </p>
             </div>
           ) : extractedFields && extractedFields.length === 0 ? (
             <div className="flex items-start gap-2 px-3 py-2.5 bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800/40 rounded-lg">
               <AlertCircle className="w-4 h-4 text-amber-500 flex-shrink-0 mt-0.5" />
               <p className="text-xs text-amber-700 dark:text-amber-400">
-                AI couldn&apos;t auto-fill fields. Please fill the required fields manually.
+                AI could not auto-fill fields from this resume. Please fill the required fields manually.
               </p>
             </div>
           ) : null}
@@ -379,7 +425,7 @@ function MarksheetUpload({
       <input
         ref={inputRef}
         type="file"
-        accept="application/pdf,image/jpeg,image/png,.pdf"
+        accept="application/pdf,.pdf"
         className="hidden"
         onChange={handleChange}
       />
@@ -465,7 +511,7 @@ export default function ProfilePage() {
   const [loading, setLoading] = useState(true);
   const [isEditing, setIsEditing] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
-  const [marksheetUrl, setMarksheetUrl] = useState<string | null>(null);
+  const [resumeAutofillUrl, setResumeAutofillUrl] = useState<string | null>(null);
   const [extractedFields, setExtractedFields] = useState<string[] | undefined>(undefined);
   const [missingExtractedFields, setMissingExtractedFields] = useState<string[]>([]);
   const [lowConfidenceFields, setLowConfidenceFields] = useState<string[]>([]);
@@ -524,7 +570,7 @@ export default function ProfilePage() {
     studentService.getMyProfile()
       .then((p) => {
         setProfile(p);
-        setMarksheetUrl(p.marksheet_url || null);
+        setResumeAutofillUrl(p.resume_url || null);
         reset({
           ...p,
           sgpa: p.sgpa ?? undefined,
@@ -547,15 +593,21 @@ export default function ProfilePage() {
       .finally(() => setLoading(false));
   }, [reset]);
 
-  function handleMarksheetUploaded(url: string, extracted: {
+  function handleResumeUploaded(url: string, extracted: {
     roll_number: string | null;
     full_name: string | null;
     semester: number | null;
     branch: string | null;
     sgpa: number | null;
     cgpa: number | null;
+    phone?: string | null;
+    linkedin_url?: string | null;
+    github_url?: string | null;
+    skills?: string[];
+    certifications?: string[];
   }, systemFlags?: ExtractionSystemFlags, uiInstructions?: ExtractionUiInstructions) {
-    setMarksheetUrl(url);
+    setResumeAutofillUrl(url);
+    setProfile((prev) => (prev ? { ...prev, resume_url: url } : prev));
     const filled: string[] = [];
 
     if (extracted.roll_number) { setValue("roll_number", extracted.roll_number); filled.push("Roll Number"); }
@@ -565,6 +617,17 @@ export default function ProfilePage() {
     if (branch) { setValue("branch", branch); filled.push("Branch"); }
     if (extracted.sgpa !== null && extracted.sgpa !== undefined) { setValue("sgpa", extracted.sgpa); filled.push("SGPA"); }
     if (extracted.cgpa !== null && extracted.cgpa !== undefined) { setValue("cgpa", extracted.cgpa); filled.push("CGPA"); }
+    if (extracted.phone) { setValue("phone", extracted.phone); filled.push("Phone"); }
+    if (extracted.linkedin_url) { setValue("linkedin_url", extracted.linkedin_url); filled.push("LinkedIn URL"); }
+    if (extracted.github_url) { setValue("github_url", extracted.github_url); filled.push("GitHub URL"); }
+    if (Array.isArray(extracted.skills) && extracted.skills.length > 0) {
+      setValue("skills", extracted.skills.join(", "));
+      filled.push("Skills");
+    }
+    if (Array.isArray(extracted.certifications) && extracted.certifications.length > 0) {
+      setValue("certifications", extracted.certifications.join(", "));
+      filled.push("Certifications");
+    }
 
     const metadataMissingPaths = Array.isArray(systemFlags?.missing_fields) ? systemFlags.missing_fields : [];
     const missingKeys = metadataMissingPaths
@@ -578,6 +641,11 @@ export default function ProfilePage() {
     if (!branch) fallbackMissingKeys.push("branch");
     if (extracted.sgpa === null || extracted.sgpa === undefined) fallbackMissingKeys.push("sgpa");
     if (extracted.cgpa === null || extracted.cgpa === undefined) fallbackMissingKeys.push("cgpa");
+    if (!extracted.phone) fallbackMissingKeys.push("phone");
+    if (!extracted.linkedin_url) fallbackMissingKeys.push("linkedin_url");
+    if (!extracted.github_url) fallbackMissingKeys.push("github_url");
+    if (!Array.isArray(extracted.skills) || extracted.skills.length === 0) fallbackMissingKeys.push("skills");
+    if (!Array.isArray(extracted.certifications) || extracted.certifications.length === 0) fallbackMissingKeys.push("certifications");
 
     const resolvedMissingKeys = Array.from(new Set(missingKeys.length > 0 ? missingKeys : fallbackMissingKeys));
 
@@ -599,15 +667,9 @@ export default function ProfilePage() {
   }
 
   async function onSubmit(data: FormData) {
-    if (!marksheetUrl) {
-      alert("Please upload your marksheet before saving your profile.");
-      return;
-    }
-
     const payload = {
       ...data,
       sgpa: data.sgpa !== undefined && data.sgpa !== null ? Number(data.sgpa) : undefined,
-      marksheet_url: marksheetUrl,
       skills: data.skills ? data.skills.split(",").map((s) => s.trim()).filter(Boolean) : [],
       certifications: data.certifications ? data.certifications.split(",").map((s) => s.trim()).filter(Boolean) : [],
     };
@@ -615,9 +677,11 @@ export default function ProfilePage() {
       if (profile) {
         const updated = await studentService.updateProfile(payload);
         setProfile(updated);
+        setResumeAutofillUrl(updated.resume_url || resumeAutofillUrl);
       } else {
         const created = await studentService.createProfile(payload);
         setProfile(created);
+        setResumeAutofillUrl(created.resume_url || resumeAutofillUrl);
       }
       setSaveSuccess(true);
       setIsEditing(false);
@@ -748,7 +812,7 @@ export default function ProfilePage() {
     if (missingExtractedFields.includes(label)) {
       return (
         <p className="mt-1 text-xs text-amber-700 dark:text-amber-400">
-          Not found in marksheet. Please fill manually.
+          Not found in resume. Please fill manually.
         </p>
       );
     }
@@ -807,19 +871,19 @@ export default function ProfilePage() {
         </Card>
       </FadeIn>
 
-      {/* Marksheet Upload Card */}
+      {/* Resume Autofill Card */}
       <FadeIn delay={0.08}>
-        <Card title="Marksheet Upload">
+        <Card title="Resume Autofill">
           <p className="text-sm text-surface-500 dark:text-surface-400 mb-3">
-            Upload your latest semester marksheet. Our AI will automatically extract your details.
+            Upload your resume to auto-fill profile details. You can still complete the form manually if anything is missing.
           </p>
-          <MarksheetUpload
-            marksheetUrl={marksheetUrl}
+          <ResumeAutofillUpload
+            resumeUrl={resumeAutofillUrl}
             extractedFields={extractedFields}
             missingFields={missingExtractedFields}
             lowConfidenceFields={lowConfidenceFields}
             confidenceScore={extractionConfidence}
-            onUploaded={handleMarksheetUploaded}
+            onUploaded={handleResumeUploaded}
           />
         </Card>
       </FadeIn>
@@ -855,7 +919,10 @@ export default function ProfilePage() {
                   <Input {...register("full_name")} label="Full Name *" placeholder="John Doe" error={errors.full_name?.message} />
                   {renderExtractionHint("Name")}
                 </div>
-                <Input {...register("phone")} label="Phone Number * (10 digits)" placeholder="9876543210" error={errors.phone?.message} />
+                <div>
+                  <Input {...register("phone")} label="Phone Number * (10 digits)" placeholder="9876543210" error={errors.phone?.message} />
+                  {renderExtractionHint("Phone")}
+                </div>
                 <Input {...register("date_of_birth")} label="Date of Birth" type="date" error={errors.date_of_birth?.message} />
                 <div className="md:col-span-2">
                   <Input {...register("address")} label="Address" placeholder="Your address" error={errors.address?.message} />
@@ -922,7 +989,7 @@ export default function ProfilePage() {
                     step="0.01"
                     min={0}
                     max={10}
-                    placeholder="Auto-filled from marksheet"
+                    placeholder="Auto-filled from resume"
                     error={errors.sgpa?.message}
                   />
                   {renderExtractionHint("SGPA")}
@@ -999,14 +1066,18 @@ export default function ProfilePage() {
                     placeholder="Python, React, Node.js, SQL"
                     error={errors.skills?.message}
                   />
+                  {renderExtractionHint("Skills")}
                   <p className="text-xs text-surface-400 dark:text-surface-500 mt-1">Separate skills with commas</p>
                 </div>
-                <Input
-                  {...register("certifications")}
-                  label="Certifications (comma-separated)"
-                  placeholder="AWS, Google Cloud, Microsoft Azure"
-                  error={errors.certifications?.message}
-                />
+                <div>
+                  <Input
+                    {...register("certifications")}
+                    label="Certifications (comma-separated)"
+                    placeholder="AWS, Google Cloud, Microsoft Azure"
+                    error={errors.certifications?.message}
+                  />
+                  {renderExtractionHint("Certifications")}
+                </div>
               </div>
             </Card>
           </StaggerItem>
@@ -1015,8 +1086,14 @@ export default function ProfilePage() {
             <Card title="Social Links">
               <div className="space-y-4">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <Input {...register("linkedin_url")} label="LinkedIn URL" placeholder="https://linkedin.com/in/username" error={errors.linkedin_url?.message} />
-                  <Input {...register("github_url")} label="GitHub URL" placeholder="https://github.com/username" error={errors.github_url?.message} />
+                  <div>
+                    <Input {...register("linkedin_url")} label="LinkedIn URL" placeholder="https://linkedin.com/in/username" error={errors.linkedin_url?.message} />
+                    {renderExtractionHint("LinkedIn URL")}
+                  </div>
+                  <div>
+                    <Input {...register("github_url")} label="GitHub URL" placeholder="https://github.com/username" error={errors.github_url?.message} />
+                    {renderExtractionHint("GitHub URL")}
+                  </div>
                 </div>
 
                 {/* Identity Verification — Aadhar */}

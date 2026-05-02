@@ -57,11 +57,17 @@ async def upload_resume(
     current_user: dict = Depends(require_student),
     service: StudentService = Depends(get_student_service),
 ):
+    from app.services.resume_profile_extraction_service import extract_resume_profile_data
+
     resume_url = await save_resume(file, current_user["id"])
     await service.update_resume_url(current_user, resume_url)
+    extracted_data = await extract_resume_profile_data(resume_url)
     return ResumeUploadResponse(
         resume_url=resume_url,
         filename=file.filename,
+        extracted_data=extracted_data,
+        system_flags=extracted_data.get("system_flags"),
+        ui_instructions=extracted_data.get("ui_instructions"),
         message="Resume uploaded successfully",
     )
 

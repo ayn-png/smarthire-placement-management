@@ -72,7 +72,34 @@ export const studentService = {
     // Do NOT set Content-Type manually — the browser/XMLHttpRequest automatically
     // sets "multipart/form-data; boundary=<...>" when FormData is the body.
     // A manual override loses the boundary and breaks server-side parsing.
-    return api.post<{ resume_url: string; filename: string; message: string }>("/students/resume", form).then((r) => r.data);
+    return api.post<{
+      resume_url: string;
+      filename: string;
+      extracted_data?: {
+        roll_number?: string | null;
+        full_name?: string | null;
+        semester?: number | null;
+        branch?: string | null;
+        sgpa?: number | null;
+        cgpa?: number | null;
+        phone?: string | null;
+        linkedin_url?: string | null;
+        github_url?: string | null;
+        skills?: string[];
+        certifications?: string[];
+      };
+      system_flags?: {
+        needs_review?: boolean;
+        missing_fields?: string[];
+        confidence_score?: number;
+      };
+      ui_instructions?: {
+        show_popup?: boolean;
+        popup_message?: string;
+        highlight_fields?: string[];
+      };
+      message: string;
+    }>("/students/resume", form).then((r) => r.data);
   },
 
   // Feature 8 — Avatar upload

@@ -177,7 +177,7 @@ export default function AIResumeAnalyzer({ hasResume }: { hasResume: boolean }) 
               </div>
               <div>
                 <h3 className="font-semibold text-surface-800 dark:text-surface-200 text-sm">
-                  AI Resume Analyzer
+                  ATS Resume Insights
                 </h3>
                 <p className="text-xs text-surface-500 dark:text-surface-400">
                   Get ATS score, skill gaps, strengths &amp; improvement tips
@@ -201,7 +201,7 @@ export default function AIResumeAnalyzer({ hasResume }: { hasResume: boolean }) 
                 className="whitespace-nowrap"
               >
                 <Sparkles className="w-3.5 h-3.5" />
-                Analyze Resume
+                Run ATS Analysis
               </Button>
             </div>
           </div>

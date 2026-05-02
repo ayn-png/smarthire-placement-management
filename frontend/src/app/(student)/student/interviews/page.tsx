@@ -136,7 +136,12 @@ export default function InterviewsPage() {
             </div>
             <div>
               <h1 className="text-2xl font-bold text-surface-900 dark:text-white">Interview Calendar</h1>
-              <p className="text-surface-500 dark:text-surface-400 text-sm mt-0.5">{interviews.length} scheduled interview{interviews.length !== 1 ? "s" : ""}</p>
+              <p className="text-surface-500 dark:text-surface-400 text-sm mt-0.5">
+                {interviews.length} scheduled interview{interviews.length !== 1 ? "s" : ""}
+              </p>
+              <p className="text-surface-400 dark:text-surface-500 text-xs mt-1">
+                Interview dates appear here after a placement admin schedules them. Connecting Google Calendar does not auto-add events; use &quot;Add to Calendar&quot; for each interview.
+              </p>
             </div>
           </div>
 
@@ -354,7 +359,9 @@ export default function InterviewsPage() {
             <div className="text-center py-16">
               <Calendar className="w-12 h-12 mx-auto mb-3 text-surface-300 dark:text-surface-600" />
               <p className="text-surface-500 dark:text-surface-400 font-medium">No interviews scheduled</p>
-              <p className="text-surface-400 dark:text-surface-500 text-sm mt-1">Your scheduled interviews will appear here</p>
+              <p className="text-surface-400 dark:text-surface-500 text-sm mt-1">
+                Your interviews will appear here after a placement admin sets an interview date.
+              </p>
             </div>
           </Card>
         </FadeIn>

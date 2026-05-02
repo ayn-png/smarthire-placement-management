@@ -294,50 +294,98 @@ async def analyze_existing_resume(
       2. Resolve file path using BASE_DIR (CWD-independent)
       3. Validate file exists, ≤5 MB, is a .pdf
       4. Extract text (PyMuPDF → pdfplumber → pypdf cascade)
-      5. Call AI service (Mistral → Gemini → OpenRouter fallback chain)
+      5. Call AI service (OpenAI → OpenRouter fallback chain)
       6. Return ATS score, skills, strengths, weaknesses, suggestions
+
+    Errors:
+      - 403: Forbidden — user is not authenticated as a STUDENT
+      - 400: Bad Request — no resume uploaded or file too large
+      - 502: Bad Gateway — AI service failed or resume download failed
+      - 503: Service Unavailable — AI keys not configured
+      - 500: Internal Server Error — unexpected error (check logs)
     """
-
-    # 1. Get student profile & resume URL
-    service = StudentService(db)
     try:
-        profile = await service.get_profile(current_user)
-    except Exception:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Student profile not found. Please create your profile first.",
-        )
+        user_id = current_user.get("id", "unknown")
+        logger.info(f"[{user_id}] Starting ATS analysis request")
 
-    resume_url = profile.resume_url
-    if not resume_url:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="No resume uploaded yet. Please upload your resume first.",
-        )
+        # 1. Get student profile & resume URL
+        service = StudentService(db)
+        try:
+            profile = await service.get_profile(current_user)
+        except Exception as e:
+            logger.error(f"[{user_id}] Failed to load student profile: {e}")
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Student profile not found. Please create your profile first.",
+            )
 
-    # 2. Handle Cloudinary URLs vs local files
-    temp_file_path = None
+        resume_url = profile.resume_url
+        if not resume_url:
+            logger.warning(f"[{user_id}] No resume uploaded")
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="No resume uploaded yet. Please upload your resume first.",
+            )
+
     try:
+        user_id = current_user.get("id", "unknown")
+        logger.info(f"[{user_id}] Starting ATS analysis request")
+
+        # 1. Get student profile & resume URL
+        service = StudentService(db)
+        try:
+            profile = await service.get_profile(current_user)
+        except Exception as e:
+            logger.error(f"[{user_id}] Failed to load student profile: {e}")
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Student profile not found. Please create your profile first.",
+            )
+
+        resume_url = profile.resume_url
+        if not resume_url:
+            logger.warning(f"[{user_id}] No resume uploaded")
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="No resume uploaded yet. Please upload your resume first.",
+            )
+
+        # 2. Handle Cloudinary URLs vs local files
+        temp_file_path = None
+        try:
         if "cloudinary.com" in resume_url:
             # Download from Cloudinary to temp file
             logger.info("Downloading resume from Cloudinary: %s", resume_url)
-            async with httpx.AsyncClient() as client:
-                response = await client.get(resume_url, timeout=30.0)
-                response.raise_for_status()
+            try:
+                async with httpx.AsyncClient(timeout=30.0) as client:
+                    response = await client.get(resume_url)
+                    if response.status_code != 200:
+                        logger.error(f"Cloudinary returned status {response.status_code}")
+                        raise HTTPException(
+                            status_code=status.HTTP_502_BAD_GATEWAY,
+                            detail="Failed to fetch resume from cloud storage. Please try re-uploading.",
+                        )
+                    response.raise_for_status()
 
-                # Create temp file
-                temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=".pdf")
-                temp_file.write(response.content)
-                temp_file.close()
-                temp_file_path = temp_file.name
-                file_path = temp_file_path
+                    # Create temp file
+                    temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=".pdf")
+                    temp_file.write(response.content)
+                    temp_file.close()
+                    temp_file_path = temp_file.name
+                    file_path = temp_file_path
 
-                # Validate size
-                if len(response.content) > 5 * 1024 * 1024:
-                    raise HTTPException(
-                        status_code=status.HTTP_400_BAD_REQUEST,
-                        detail="Resume file exceeds the 5 MB limit.",
-                    )
+                    # Validate size
+                    if len(response.content) > 5 * 1024 * 1024:
+                        raise HTTPException(
+                            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                            detail="Resume file exceeds the 5 MB limit.",
+                        )
+            except httpx.RequestError as e:
+                logger.error(f"Network error downloading resume: {e}")
+                raise HTTPException(
+                    status_code=status.HTTP_504_GATEWAY_TIMEOUT,
+                    detail="Network error while fetching resume. Please try again.",
+                )
         else:
             # Legacy local file
             relative_path = resume_url.lstrip("/")
@@ -362,7 +410,7 @@ async def analyze_existing_resume(
 
             if file_size > 5 * 1024 * 1024:
                 raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
+                    status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
                     detail="Resume file exceeds the 5 MB limit.",
                 )
 
@@ -371,12 +419,21 @@ async def analyze_existing_resume(
         resume_text = await _extract_pdf_text(file_path)
         logger.info("Extraction successful: %d characters", len(resume_text))
 
-        # 4. Call AI service
+        # 4. Validate AI API keys before calling service
+        logger.info("Validating AI service configuration...")
+        if not settings.OPENAI_API_KEY and not settings.OPENROUTER_API_KEY:
+            logger.error("No AI API keys configured (OPENAI_API_KEY or OPENROUTER_API_KEY)")
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="AI resume analysis service is not configured. Please contact the administrator.",
+            )
+
+        # 5. Call AI service
         logger.info("Sending resume text (%d chars) to AI service", len(resume_text))
         try:
             result = await analyze_resume_text(resume_text, body.job_description)
         except RuntimeError as exc:
-            logger.error("AI service error: %s", exc)
+            logger.error("AI service error: %s", exc, exc_info=True)
             raise HTTPException(
                 status_code=status.HTTP_502_BAD_GATEWAY,
                 detail=str(exc),
@@ -385,10 +442,10 @@ async def analyze_existing_resume(
             logger.error("Unexpected AI error: %s", exc, exc_info=True)
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="AI analysis failed unexpectedly. Please try again later.",
+                detail=f"AI analysis failed: {str(exc)[:100]}. Please try again later.",
             )
 
-        # 5. Return — Pydantic validates and serialises the dict
+        # 6. Return — Pydantic validates and serialises the dict
         return AnalyzeResumeResponse(**result)
 
     finally:

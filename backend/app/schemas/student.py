@@ -271,6 +271,9 @@ class StudentProfileResponse(BaseModel):
 class ResumeUploadResponse(BaseModel):
     resume_url: str
     filename: str
+    extracted_data: Optional[dict] = None
+    system_flags: Optional[dict] = None
+    ui_instructions: Optional[dict] = None
     message: str
 
 

@@ -181,7 +181,7 @@ export default function StudentDashboard() {
             {[
               { href: "/student/jobs", label: "Browse Jobs", icon: Briefcase, gradient: "from-blue-500 to-blue-600" },
               { href: "/student/profile", label: "Update Profile", icon: User, gradient: "from-emerald-500 to-green-600" },
-              { href: "/student/resume", label: "Upload Resume", icon: ClipboardList, gradient: "from-violet-500 to-purple-600" },
+              { href: "/student/resume", label: "Resume Insights", icon: ClipboardList, gradient: "from-violet-500 to-purple-600" },
               { href: "/student/interview", label: "Practice Interview", icon: CheckCircle, gradient: "from-orange-500 to-amber-600" },
             ].map(({ href, label, icon: Icon, gradient }) => (
               <Link key={href} href={href}>

@@ -59,13 +59,29 @@ async def analyze_resume(
             # Resume stored on Cloudinary — download to a temp file for analysis
             import tempfile
             import httpx
-            async with httpx.AsyncClient(timeout=30) as client:
-                r = await client.get(resume_url)
+            try:
+                async with httpx.AsyncClient(timeout=30) as client:
+                    r = await client.get(resume_url)
+            except httpx.RequestError as e:
+                logger.error(f"Error fetching resume URL {resume_url}: {e}", exc_info=True)
+                raise HTTPException(
+                    status_code=status.HTTP_504_GATEWAY_TIMEOUT,
+                    detail="Timeout or network error while fetching resume from cloud storage. Please try re-uploading.",
+                )
+            except Exception as e:
+                logger.error(f"Unexpected error fetching resume URL {resume_url}: {e}", exc_info=True)
+                raise HTTPException(
+                    status_code=status.HTTP_502_BAD_GATEWAY,
+                    detail="Failed to fetch resume from cloud storage. Please re-upload.",
+                )
+
             if r.status_code != 200:
+                logger.error(f"Fetching resume returned status {r.status_code} for URL {resume_url}")
                 raise HTTPException(
                     status_code=status.HTTP_404_NOT_FOUND,
-                    detail="Could not fetch resume from cloud storage. Please re-upload.",
+                    detail="Could not fetch resume from cloud storage. Please re-upload your resume.",
                 )
+
             tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".pdf")
             tmp.write(r.content)
             tmp.close()
@@ -88,6 +104,12 @@ async def analyze_resume(
             raise HTTPException(
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
                 detail=str(e),
+            )
+        except Exception as e:
+            logger.error(f"Failed initializing analyzer service: {e}", exc_info=True)
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Resume analyzer service initialization failed. Check server logs.",
             )
 
         result = await svc.analyze_resume(

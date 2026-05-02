@@ -2,10 +2,11 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { cn } from "@/lib/utils";
+import { cn, getFileUrl } from "@/lib/utils";
 import { useAuth } from "@/contexts/AuthContext";
 import { signOut } from "firebase/auth";
 import { auth } from "@/lib/firebase";
+import { authService, studentService, adminProfileService, managementProfileService } from "@/services/api";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   LayoutDashboard, User, FileText, ClipboardList,
@@ -18,7 +19,7 @@ import {
 const STUDENT_NAV = [
   { href: "/student/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/student/profile", label: "My Profile", icon: User },
-  { href: "/student/resume", label: "Resume", icon: FileText },
+  { href: "/student/resume", label: "Resume Insights", icon: FileText },
   { href: "/student/placement-drives", label: "Drives", icon: CalendarDays },
   { href: "/student/applications", label: "My Applications", icon: ClipboardList },
   { href: "/student/interviews", label: "Interviews", icon: Calendar },
@@ -67,6 +68,8 @@ export default function Sidebar({ collapsed, setCollapsed, mobileOpen, setMobile
   const router = useRouter();
   const { user, role: authRole } = useAuth();
   const [mounted, setMounted] = useState(false);
+  const [displayName, setDisplayName] = useState("User");
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
 
   useEffect(() => {
     setMounted(true);
@@ -76,7 +79,62 @@ export default function Sidebar({ collapsed, setCollapsed, mobileOpen, setMobile
   // on the very first paint without waiting for the Firebase auth callback.
   const cookieRole = typeof document !== "undefined" ? getCookieRole() : undefined;
   const role = mounted ? (authRole || cookieRole || "STUDENT") : "STUDENT";
-  const name = mounted ? (user?.displayName || user?.email?.split("@")[0] || "User") : "User";
+
+  useEffect(() => {
+    if (!mounted) return;
+
+    let cancelled = false;
+    const fallbackName = user?.displayName || user?.email?.split("@")[0] || "User";
+    setDisplayName(fallbackName);
+    setAvatarUrl(null);
+
+    async function loadIdentity() {
+      try {
+        const me = await authService.getMe();
+        if (!cancelled && me?.full_name) {
+          setDisplayName(me.full_name);
+        }
+      } catch {
+        // Keep the auth fallback if the backend user document is unavailable.
+      }
+
+      try {
+        if (role === "STUDENT") {
+          const profile = await studentService.getMyProfile();
+          if (cancelled) return;
+          if (profile.full_name) setDisplayName(profile.full_name);
+          if (profile.avatar_url) setAvatarUrl(profile.avatar_url);
+          return;
+        }
+
+        if (role === "PLACEMENT_ADMIN") {
+          const response = await adminProfileService.get();
+          const profile = response.data;
+          if (cancelled) return;
+          if (profile?.full_name) setDisplayName(profile.full_name);
+          if (profile?.avatar_url) setAvatarUrl(profile.avatar_url);
+          return;
+        }
+
+        if (role === "COLLEGE_MANAGEMENT") {
+          const response = await managementProfileService.get();
+          const profile = response.data;
+          if (cancelled) return;
+          if (profile?.full_name) setDisplayName(profile.full_name);
+          if (profile?.avatar_url) setAvatarUrl(profile.avatar_url);
+        }
+      } catch {
+        // Missing role-specific profile data should not break the sidebar.
+      }
+    }
+
+    loadIdentity();
+    return () => {
+      cancelled = true;
+    };
+  }, [mounted, role, user?.displayName, user?.email]);
+
+  const name = mounted ? displayName : "User";
 
   const navItems =
     role === "STUDENT" ? STUDENT_NAV :
@@ -201,7 +259,15 @@ export default function Sidebar({ collapsed, setCollapsed, mobileOpen, setMobile
       )}>
         <div className={cn("flex items-center", collapsed ? "justify-center" : "gap-3 mb-3")}>
           <div className="w-8 h-8 bg-gradient-to-br from-primary-400 to-primary-600 rounded-full flex items-center justify-center flex-shrink-0 ring-2 ring-white/20">
-            <span className="text-white text-xs font-bold">{name?.charAt(0).toUpperCase()}</span>
+            {avatarUrl ? (
+              <img
+                src={getFileUrl(avatarUrl)}
+                alt={name}
+                className="w-full h-full rounded-full object-cover"
+              />
+            ) : (
+              <span className="text-white text-xs font-bold">{name?.charAt(0).toUpperCase()}</span>
+            )}
           </div>
           <AnimatePresence>
             {!collapsed && (

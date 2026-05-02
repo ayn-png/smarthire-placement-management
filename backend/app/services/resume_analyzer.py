@@ -3,12 +3,12 @@ import json
 import logging
 import asyncio
 from typing import Optional, Dict, Any
-from langchain_community.document_loaders import PyPDFLoader
 from langchain_openai import ChatOpenAI
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import JsonOutputParser
 from pydantic import BaseModel, Field
 from app.core.config import settings
+from app.services.resume_extractor import extract_resume_text_with_ocr
 
 logger = logging.getLogger(__name__)
 
@@ -76,7 +76,7 @@ Return ONLY valid JSON matching the schema. No markdown, no explanations.""")
         ])
 
     async def extract_text_from_pdf(self, file_path: str) -> str:
-        """Extract text from PDF using PyPDFLoader"""
+        """Extract text from PDF using the shared OCR-capable extractor."""
         if not os.path.exists(file_path):
             raise FileNotFoundError(f"PDF file not found: {file_path}")
 
@@ -88,13 +88,7 @@ Return ONLY valid JSON matching the schema. No markdown, no explanations.""")
             raise ValueError("PDF file too large (max 10MB)")
 
         try:
-            loader = PyPDFLoader(file_path)
-            documents = await asyncio.to_thread(loader.load)
-
-            if not documents:
-                raise ValueError("No content could be extracted from PDF")
-
-            text = "\n\n".join([doc.page_content for doc in documents if doc.page_content])
+            text = await asyncio.to_thread(extract_resume_text_with_ocr, file_path)
 
             if not text or len(text.strip()) < 50:
                 raise ValueError("Insufficient text extracted from PDF. Ensure it's not a scanned image.")
@@ -102,6 +96,11 @@ Return ONLY valid JSON matching the schema. No markdown, no explanations.""")
             logger.info(f"Extracted {len(text)} characters from PDF")
             return text.strip()
 
+        except FileNotFoundError:
+            raise
+        except ValueError as e:
+            logger.error(f"PDF extraction failed: {e}")
+            raise
         except Exception as e:
             logger.error(f"PDF extraction failed: {e}")
             raise ValueError(f"Failed to extract text from PDF: {str(e)}")
